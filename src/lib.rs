@@ -1,3 +1,6 @@
+#![cfg_attr(not(test), warn(unused_crate_dependencies))]
+#![doc = include_str!("../README.md")]
+
 mod inner;
 pub use inner::NodeGuard;
 use inner::SelfHandle;

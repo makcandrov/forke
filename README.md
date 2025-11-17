@@ -1,6 +1,6 @@
 # forke
 
-`forke` is a thread-safe tree implementation in Rust, where each node can store arbitrary, generic data.
+`forke` is a thread-safe tree implementation where each node can store arbitrary, generic data.
 
 The core idea behind `forke` is that when a node is no longer needed, it is merged with its descendant or discarded if there are none. A node is considered useless if it has been dropped by the user and has no more than one child. When a merge happens, the associated data is combined using the `Merge` trait.
 
