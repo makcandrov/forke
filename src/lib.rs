@@ -5,11 +5,10 @@ mod inner;
 pub use inner::NodeGuard;
 use inner::SelfHandle;
 
-mod utils;
+mod merge;
+pub use merge::Merge;
 
-pub trait Merge {
-    fn merge(parent: Self, child: &mut Self);
-}
+mod utils;
 
 #[derive(Debug)]
 pub struct Node<T: Merge> {

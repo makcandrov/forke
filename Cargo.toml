@@ -7,3 +7,9 @@ edition = "2024"
 parking_lot = "0.12"
 hashbrown = "0.16"
 quick-impl = "0.2"
+
+indexmap = { version = "2", optional = true }
+
+[features]
+hashbrown = []
+indexmap = ["dep:indexmap"]

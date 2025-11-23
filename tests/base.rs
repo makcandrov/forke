@@ -62,7 +62,7 @@ impl Drop for ContentDebug {
 }
 
 impl Merge for ContentDebug {
-    fn merge(parent: Self, child: &mut Self) {
+    fn merge(child: &mut Self, parent: Self) {
         child.merged.write().push(parent.id);
     }
 }
