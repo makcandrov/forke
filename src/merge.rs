@@ -4,19 +4,37 @@ use std::{
 };
 
 pub trait Merge {
-    fn merge(child: &mut Self, parent: Self);
+    fn merge(parent: &mut Self, child: Self);
+}
+
+pub trait MergeInv: Merge {
+    fn merge_inv(child: &mut Self, parent: Self);
+}
+
+impl<T: Merge> MergeInv for T {
+    #[inline(always)]
+    fn merge_inv(child: &mut Self, mut parent: Self) {
+        parent = replace(child, parent);
+        Merge::merge(child, parent);
+    }
 }
 
 impl<T> Merge for Option<T>
 where
     T: Merge,
 {
-    fn merge(child: &mut Self, parent: Self) {
-        match (child, parent) {
+    fn merge(parent: &mut Self, child: Self) {
+        match (parent, child) {
             (_, None) => {}
-            (child @ None, parent) => *child = parent,
-            (Some(child), Some(parent)) => Merge::merge(child, parent),
+            (parent @ None, child) => *parent = child,
+            (Some(parent), Some(child)) => Merge::merge(parent, child),
         }
+    }
+}
+
+impl<T> Merge for Vec<T> {
+    fn merge(parent: &mut Self, child: Self) {
+        parent.extend(child);
     }
 }
 
@@ -29,20 +47,20 @@ const _: () = {
         T: Eq + Hash,
         S: BuildHasher,
     {
-        fn merge(child: &mut Self, mut parent: Self) {
-            if child.len() < parent.len() {
-                parent = replace(child, parent);
+        fn merge(parent: &mut Self, mut child: Self) {
+            if parent.len() < child.len() {
+                child = replace(parent, child);
             }
-            child.extend(parent);
+            parent.extend(child);
         }
     }
 
     impl<T: Ord> Merge for BTreeSet<T> {
-        fn merge(child: &mut Self, mut parent: Self) {
-            if child.len() < parent.len() {
-                parent = replace(child, parent);
+        fn merge(parent: &mut Self, mut child: Self) {
+            if parent.len() < child.len() {
+                child = replace(parent, child);
             }
-            child.extend(parent);
+            parent.extend(child);
         }
     }
 
@@ -52,13 +70,17 @@ const _: () = {
         V: Merge,
         S: BuildHasher,
     {
-        fn merge(child: &mut Self, mut parent: Self) {
-            if child.len() < parent.len() {
-                parent = replace(child, parent);
-            }
-            for (k, v) in parent {
-                match child.entry(k) {
-                    hash_map::Entry::Occupied(mut e) => Merge::merge(e.get_mut(), v),
+        fn merge(parent: &mut Self, mut child: Self) {
+            let merge = if parent.len() < child.len() {
+                child = replace(parent, child);
+                <V as Merge>::merge
+            } else {
+                <V as MergeInv>::merge_inv
+            };
+
+            for (k, v) in child {
+                match parent.entry(k) {
+                    hash_map::Entry::Occupied(mut e) => merge(e.get_mut(), v),
                     hash_map::Entry::Vacant(e) => {
                         e.insert(v);
                     }
@@ -68,13 +90,17 @@ const _: () = {
     }
 
     impl<K: Ord, V: Merge> Merge for BTreeMap<K, V> {
-        fn merge(child: &mut Self, mut parent: Self) {
-            if child.len() < parent.len() {
-                parent = replace(child, parent);
-            }
-            for (k, v) in parent {
-                match child.entry(k) {
-                    btree_map::Entry::Occupied(mut e) => Merge::merge(e.get_mut(), v),
+        fn merge(parent: &mut Self, mut child: Self) {
+            let merge = if parent.len() < child.len() {
+                child = replace(parent, child);
+                <V as Merge>::merge
+            } else {
+                <V as MergeInv>::merge_inv
+            };
+
+            for (k, v) in child {
+                match parent.entry(k) {
+                    btree_map::Entry::Occupied(mut e) => merge(e.get_mut(), v),
                     btree_map::Entry::Vacant(e) => {
                         e.insert(v);
                     }
@@ -84,7 +110,6 @@ const _: () = {
     }
 };
 
-// hashbrown
 #[cfg(feature = "hashbrown")]
 const _: () = {
     use hashbrown::{HashMap, HashSet, hash_map};
@@ -94,11 +119,11 @@ const _: () = {
         T: Eq + Hash,
         S: BuildHasher,
     {
-        fn merge(child: &mut Self, mut parent: Self) {
-            if child.len() < parent.len() {
-                parent = replace(child, parent);
+        fn merge(parent: &mut Self, mut child: Self) {
+            if parent.len() < child.len() {
+                child = replace(parent, child);
             }
-            child.extend(parent);
+            parent.extend(child);
         }
     }
 
@@ -108,54 +133,18 @@ const _: () = {
         V: Merge,
         S: BuildHasher,
     {
-        fn merge(child: &mut Self, mut parent: Self) {
-            if child.len() < parent.len() {
-                parent = replace(child, parent);
-            }
-            for (k, v) in parent {
-                match child.entry(k) {
-                    hash_map::Entry::Occupied(mut e) => Merge::merge(e.get_mut(), v),
+        fn merge(parent: &mut Self, mut child: Self) {
+            let merge = if parent.len() < child.len() {
+                child = replace(parent, child);
+                <V as Merge>::merge
+            } else {
+                <V as MergeInv>::merge_inv
+            };
+
+            for (k, v) in child {
+                match parent.entry(k) {
+                    hash_map::Entry::Occupied(mut e) => merge(e.get_mut(), v),
                     hash_map::Entry::Vacant(e) => {
-                        e.insert(v);
-                    }
-                }
-            }
-        }
-    }
-};
-
-// indexmap
-#[cfg(feature = "indexmap")]
-const _: () = {
-    use indexmap::{IndexMap, IndexSet, map};
-
-    impl<T, S> Merge for IndexSet<T, S>
-    where
-        T: Eq + Hash,
-        S: BuildHasher,
-    {
-        fn merge(child: &mut Self, mut parent: Self) {
-            if child.len() < parent.len() {
-                parent = replace(child, parent);
-            }
-            child.extend(parent);
-        }
-    }
-
-    impl<K, V, S> Merge for IndexMap<K, V, S>
-    where
-        K: Eq + Hash,
-        V: Merge,
-        S: BuildHasher,
-    {
-        fn merge(child: &mut Self, mut parent: Self) {
-            if child.len() < parent.len() {
-                parent = replace(child, parent);
-            }
-            for (k, v) in parent {
-                match child.entry(k) {
-                    map::Entry::Occupied(mut e) => Merge::merge(e.get_mut(), v),
-                    map::Entry::Vacant(e) => {
                         e.insert(v);
                     }
                 }

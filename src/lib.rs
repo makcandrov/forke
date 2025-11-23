@@ -6,7 +6,7 @@ pub use inner::NodeGuard;
 use inner::SelfHandle;
 
 mod merge;
-pub use merge::Merge;
+pub use merge::{Merge, MergeInv};
 
 mod utils;
 

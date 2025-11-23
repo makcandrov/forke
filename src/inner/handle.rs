@@ -6,7 +6,7 @@ use std::{
 use hashbrown::HashMap;
 use parking_lot::{RwLock, RwLockWriteGuard};
 
-use crate::{Merge, utils::Multiplicity};
+use crate::{Merge, MergeInv, utils::Multiplicity};
 
 use super::NodeInner;
 
@@ -211,7 +211,7 @@ impl<T: Merge> Drop for SelfHandle<T> {
                         node_parent_handle.drop_forget();
 
                         // Merge data
-                        Merge::merge(&mut child_guard.data, node_owned.data);
+                        MergeInv::merge_inv(&mut child_guard.data, node_owned.data);
 
                         break;
                     } else {
@@ -235,7 +235,7 @@ impl<T: Merge> Drop for SelfHandle<T> {
                         node_parent_handle.drop_forget();
 
                         // Merge data
-                        Merge::merge(&mut child_guard.data, node_owned.data);
+                        MergeInv::merge_inv(&mut child_guard.data, node_owned.data);
                         break;
                     }
                 }
@@ -369,7 +369,7 @@ impl<T: Merge> Drop for ParentHandle<T> {
                         node_parent_handle.drop_forget();
 
                         // Merge data
-                        Merge::merge(&mut child_guard.data, node_owned.data);
+                        MergeInv::merge_inv(&mut child_guard.data, node_owned.data);
 
                         break;
                     } else {
@@ -393,7 +393,7 @@ impl<T: Merge> Drop for ParentHandle<T> {
                         node_parent_handle.drop_forget();
 
                         // Merge data
-                        Merge::merge(&mut child_guard.data, node_owned.data);
+                        MergeInv::merge_inv(&mut child_guard.data, node_owned.data);
                         break;
                     }
                 }
