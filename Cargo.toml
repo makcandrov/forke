@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 parking_lot = "0.12"
+safe-lock = { git = "https://github.com/makcandrov/safe-lock", features = ["parking_lot"] }
 hashbrown = "0.16"
 quick-impl = "0.2"
 

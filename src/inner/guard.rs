@@ -1,8 +1,8 @@
 use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard};
 
-use crate::{Merge, SelfHandle};
+use crate::Merge;
 
-use super::{NodeInner, ParentHandle};
+use super::{NodeInner, ParentHandle, SelfHandle};
 
 #[derive(Debug)]
 pub struct NodeGuard<'a, T: Merge> {
@@ -15,10 +15,9 @@ impl<'a, T: Merge> NodeGuard<'a, T> {
     }
 
     pub fn parent(&'a self) -> Option<Self> {
-        self.node_guard
-            .parent
-            .as_ref()
-            .map(|parent_handle| Self::new(&parent_handle.inner))
+        self.node_guard.parent.as_ref().map(|parent_handle| Self {
+            node_guard: parent_handle.inner.read_guard(),
+        })
     }
 
     pub(super) fn new(node_lock: &'a RwLock<Option<NodeInner<T>>>) -> Self {
@@ -42,18 +41,5 @@ impl<'a, T: Merge> NodeGuard<'a, T> {
         } else {
             None
         }
-    }
-}
-
-impl<T: Merge> SelfHandle<T> {
-    pub(crate) fn read(&self) -> NodeGuard<'_, T> {
-        NodeGuard::new(&self.inner)
-    }
-}
-
-impl<T: Merge> ParentHandle<T> {
-    #[expect(unused)]
-    pub(crate) fn read(&self) -> NodeGuard<'_, T> {
-        NodeGuard::new(&self.inner)
     }
 }
