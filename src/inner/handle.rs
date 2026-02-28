@@ -8,18 +8,25 @@ use parking_lot::{
 };
 use safe_lock::parking_lot::SafeRwLock;
 
-use crate::{Merge, MergeInv, inner::NodeIndex};
+use crate::{
+    Merge, MergeInv,
+    inner::{NodeIndex, common::Common},
+};
 
 use super::{Multiplicity, NodeInner};
 
 #[derive(Debug)]
 pub struct StrongHandle<T: Merge> {
     inner: Arc<RwLock<Option<NodeInner<T>>>>,
+    common: Common<T>,
+    index: u64,
 }
 
 #[derive(Debug)]
 pub struct WeakHandle<T: Merge> {
     inner: Weak<RwLock<Option<NodeInner<T>>>>,
+    common: Common<T>,
+    index: u64,
 }
 
 /// Handle of a parent to a child.
@@ -44,6 +51,8 @@ impl<T: Merge> Clone for StrongHandle<T> {
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
+            common: self.common.clone(),
+            index: self.index,
         }
     }
 }
@@ -52,6 +61,8 @@ impl<T: Merge> Clone for WeakHandle<T> {
     fn clone(&self) -> Self {
         Self {
             inner: Weak::clone(&self.inner),
+            common: self.common.clone(),
+            index: self.index,
         }
     }
 }
@@ -68,7 +79,11 @@ impl<T: Merge> SelfHandle<T> {
 impl<T: Merge> WeakHandle<T> {
     #[inline]
     fn upgrade(&self) -> Option<StrongHandle<T>> {
-        self.inner.upgrade().map(|inner| StrongHandle { inner })
+        self.inner.upgrade().map(|inner| StrongHandle {
+            inner,
+            index: self.index,
+            common: self.common.clone(),
+        })
     }
 }
 
@@ -77,6 +92,9 @@ impl<T: Merge> StrongHandle<T> {
     fn downgrade(&self) -> WeakHandle<T> {
         WeakHandle {
             inner: Arc::downgrade(&self.inner),
+            common: self.common.clone(),
+
+            index: self.index,
         }
     }
 
@@ -104,15 +122,17 @@ impl<T: Merge> StrongHandle<T> {
         RwLockReadGuard::try_map(self.inner.read(), |node| node.as_ref()).ok()
     }
 
-    fn new(node: NodeInner<T>) -> Self {
+    fn new(node: NodeInner<T>, common: Common<T>) -> Self {
         Self {
+            index: node.index,
+            common,
             inner: Arc::new(RwLock::new(Some(node))),
         }
     }
 
     pub fn root(data: T) -> Self {
         let node = NodeInner::root(data);
-        Self::new(node)
+        Self::new(node, Common::new())
     }
 
     pub fn create_child(&self, data: T) -> Self {
@@ -136,16 +156,17 @@ impl<T: Merge> StrongHandle<T> {
             inner: self.clone(),
         };
         let child_node = NodeInner::child(parent_handle, node.counter.clone(), data);
-        self.add_child_inner(node, child_node)
+        self.add_child_inner(node, child_noden)
     }
 
     fn add_child_inner(
         &self,
         node: &mut NodeInner<T>,
         child_node: NodeInner<T>,
+        common: Common<T>,
     ) -> StrongHandle<T> {
         let child_index = child_node.index;
-        let child_strong_handle = StrongHandle::new(child_node);
+        let child_strong_handle = StrongHandle::new(child_node, common);
         let child_handle = ChildHandle {
             inner: child_strong_handle.downgrade(),
         };
@@ -153,7 +174,7 @@ impl<T: Merge> StrongHandle<T> {
         child_strong_handle
     }
 
-    fn try_drop(&mut self, self_drop: bool) -> Result<(), DropError<T>> {
+    fn try_drop(&mut self, args: TryDropArg) -> Result<(), TryDropError<T>> {
         let mut child_strong_handle_opt: Option<StrongHandle<T>> = None;
 
         let mut node_opt_lock = self.safe_lock();
@@ -161,12 +182,13 @@ impl<T: Merge> StrongHandle<T> {
         loop {
             // Lock the child if there is some.
             let child_guard_opt = if let Some(child_strong_handle) = &child_strong_handle_opt {
+                let child_index = child_strong_handle.index;
                 let Ok(child_opt_guard) = child_strong_handle.safe_lock().try_lock_immediate()
                 else {
                     // Another thread reads the child.
-                    return Err(DropError {
+                    return Err(TryDropError {
                         handle: self.clone(),
-                        blocking_node: todo!(),
+                        blocking_node: child_index,
                     });
                 };
                 match child_opt_guard.try_map(Option::as_mut) {
@@ -185,14 +207,14 @@ impl<T: Merge> StrongHandle<T> {
             // Lock the node.
             let Ok(node_opt_guard) = node_opt_lock.try_lock_immediate() else {
                 // Another thread reads the node.
-                return Err(DropError {
+                return Err(TryDropError {
                     handle: self.clone(),
-                    blocking_node: todo!(),
+                    blocking_node: self.index,
                 });
             };
             let Some(node) = node_opt_guard.as_ref() else {
                 // The user dropped the node in the meantime.
-                assert!(!self_drop);
+                assert!(!args.self_drop);
                 return Ok(());
             };
             let node_index = node.index;
@@ -366,8 +388,37 @@ impl<T: Merge> StrongHandle<T> {
     }
 }
 
+impl<T: Merge> Drop for StrongHandle<T> {
+    fn drop(&mut self) {
+        let process_index = self.common.next_process_index();
+
+        let args = TryDropArg {
+            self_drop: true,
+            process_index,
+        };
+
+        match self.try_drop(args) {
+            Ok(()) => {
+                // Empty the drop queue
+                self.common.drop_queue().execute_drops(process_index);
+            }
+            Err(err) => {
+                self.common
+                    .drop_queue()
+                    .insert_to_queue(err.blocking_node, self.clone());
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct TryDropArg {
+    self_drop: bool,
+    process_index: u64,
+}
+
 #[derive(Debug, Clone)]
-pub struct DropError<T: Merge> {
+pub struct TryDropError<T: Merge> {
     handle: StrongHandle<T>,
     blocking_node: NodeIndex,
 }

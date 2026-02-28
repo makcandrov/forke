@@ -3,6 +3,7 @@ use hashbrown::HashMap;
 use crate::Merge;
 
 mod common;
+pub use common::Common;
 
 mod guard;
 pub use guard::NodeGuard;
@@ -11,8 +12,7 @@ mod handle;
 pub(crate) use handle::SelfHandle;
 use handle::{ChildHandle, ParentHandle};
 
-mod counter;
-use counter::Counter;
+mod lock;
 
 mod multiplicity;
 use multiplicity::Multiplicity;
