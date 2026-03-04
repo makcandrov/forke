@@ -1,13 +1,10 @@
-use std::{
-    ptr,
-    sync::{Arc, Weak},
-};
+use std::{ptr, sync::Arc};
 
 use lock_notify::{
     MappedRwLockNotifyReadGuard, RwLockNotify, RwLockNotifyReadGuard, RwLockNotifyWriteGuard,
 };
 
-use crate::{Merge, MergeInv, NodeData, inner::common::Common};
+use crate::{MergeInv, NodeData};
 
 use super::{Multiplicity, NodeInner};
 
@@ -87,8 +84,7 @@ impl<T: NodeData> Handle<T> {
         loop {
             // Lock the child if there is some.
             let child_guard_opt = if let Some(child_strong_handle) = &child_handle_opt {
-                let Some(child_opt_guard) =
-                    child_strong_handle.inner.try_write_or_else(&retry_drop)
+                let Some(child_opt_guard) = child_strong_handle.inner.try_write_or_else(retry_drop)
                 else {
                     // Another thread reads the child - delay the drop.
                     return;
@@ -108,14 +104,13 @@ impl<T: NodeData> Handle<T> {
             };
 
             // Lock the node.
-            let Some(mut node_opt_guard) = self.inner.try_write_or_else(&retry_drop) else {
+            let Some(mut node_opt_guard) = self.inner.try_write_or_else(retry_drop) else {
                 // Another thread reads the node - delay the drop.
                 return;
             };
 
             let Some(node) = node_opt_guard.as_ref() else {
-                // The user dropped the node in the meantime.
-                assert!(!self_drop);
+                // The node has already been merged away by a concurrent retry.
                 return;
             };
 
@@ -127,19 +122,24 @@ impl<T: NodeData> Handle<T> {
 
                     let node = node_opt_guard.as_mut().unwrap();
 
+                    if self_drop {
+                        node.alive = false;
+                    } else if node.alive {
+                        // Cascade reached a live node. Stop.
+                        break;
+                    }
+
                     let Some(mut parent_handle) = node.parent.take() else {
                         // If this is the root, there is nothing to do.
                         break;
                     };
 
-                    let Some(mut parent_guard) = parent_handle.inner.try_write_or_else(&retry_drop)
+                    let Some(mut parent_guard) = parent_handle.inner.try_write_or_else(retry_drop)
                     else {
                         // Another thread reads the parent - delay the drop.
                         node.parent = Some(parent_handle);
                         return;
                     };
-
-                    node.alive = false;
 
                     let parent_node = parent_guard
                         .as_mut()
@@ -191,6 +191,11 @@ impl<T: NodeData> Handle<T> {
                         drop(child_guard);
                         child_handle_opt = Some(child_handle_confirm.clone());
                         continue;
+                    }
+
+                    if !self_drop && node.alive {
+                        // Cascade reached a live node. Stop.
+                        break;
                     }
 
                     if let Some(parent_handle) = node.parent.clone() {
