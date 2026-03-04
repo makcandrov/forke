@@ -1,35 +1,30 @@
-use crate::{Merge, inner::SelfHandle};
+use crate::{NodeData, inner::Handle};
 
 #[derive(Debug)]
-pub struct Node<T: Merge> {
-    handle: SelfHandle<T>,
+pub struct Node<T: NodeData> {
+    handle: Handle<T>,
 }
 
-impl<T: Merge> Node<T> {
+impl<T: NodeData> Node<T> {
     #[inline]
     pub fn root(data: T) -> Self {
         Self {
-            handle: SelfHandle::root(data),
+            handle: Handle::root(data),
         }
     }
 
     #[inline]
     pub fn add_child(&self, data: T) -> Self {
         Self {
-            handle: SelfHandle {
-                inner: self.handle.inner.create_child(data),
-            },
+            handle: self.handle.create_child(data),
         }
     }
 
     #[inline]
     pub fn add_children(&self, data: impl IntoIterator<Item = T>) -> Vec<Self> {
         self.handle
-            .inner
             .create_children(data)
-            .map(|inner| Self {
-                handle: SelfHandle { inner },
-            })
+            .map(|handle| Self { handle })
             .collect()
     }
 
@@ -43,4 +38,10 @@ impl<T: Merge> Node<T> {
     // {
     //     self.read().search(f)
     // }
+}
+
+impl<T: NodeData> Drop for Node<T> {
+    fn drop(&mut self) {
+        self.handle.try_drop(true);
+    }
 }

@@ -1,33 +1,27 @@
-use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard};
+use lock_notify::MappedRwLockNotifyReadGuard;
 
-use crate::Merge;
+use crate::{NodeData, inner::Handle};
 
-use super::{NodeInner, ParentHandle, SelfHandle};
+use super::NodeInner;
 
 #[derive(Debug)]
-pub struct NodeGuard<'a, T: Merge> {
-    node_guard: MappedRwLockReadGuard<'a, NodeInner<T>>,
+pub struct NodeGuard<'a, T: NodeData> {
+    guard: MappedRwLockNotifyReadGuard<'a, NodeInner<T>>,
 }
 
-impl<'a, T: Merge> NodeGuard<'a, T> {
+impl<'a, T: NodeData> NodeGuard<'a, T> {
     pub fn data(&self) -> &T {
-        &self.node_guard.data
+        &self.guard.data
     }
 
     pub fn parent(&'a self) -> Option<Self> {
-        self.node_guard.parent.as_ref().map(|parent_handle| Self {
-            node_guard: parent_handle.inner.read_guard(),
-        })
+        self.guard.parent.as_ref().map(|parent| Self::new(parent))
     }
 
-    pub(super) fn new(node_lock: &'a RwLock<Option<NodeInner<T>>>) -> Self {
-        let node_guard = RwLockReadGuard::map(node_lock.read(), |node_opt| {
-            node_opt
-                .as_ref()
-                .expect("node isn't dropped as a user handle exists")
-        });
-
-        Self { node_guard }
+    pub fn new(handle: &'a Handle<T>) -> Self {
+        Self {
+            guard: handle.read_node(),
+        }
     }
 
     pub fn search<U, F>(&self, f: F) -> Option<U>

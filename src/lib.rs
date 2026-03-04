@@ -1,6 +1,9 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![doc = include_str!("../README.md")]
 
+mod data;
+pub use data::NodeData;
+
 mod inner;
 
 mod guard;
