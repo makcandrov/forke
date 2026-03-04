@@ -4,12 +4,12 @@ use lock_notify::{
     MappedRwLockNotifyReadGuard, RwLockNotify, RwLockNotifyReadGuard, RwLockNotifyWriteGuard,
 };
 
-use crate::{MergeInv, NodeData};
+use crate::{MergeInv, NodeData, NodeGuard};
 
 use super::{Multiplicity, NodeInner};
 
 #[derive(Debug)]
-pub struct Handle<T: NodeData> {
+pub(crate) struct Handle<T: NodeData> {
     inner: Arc<RwLockNotify<Option<NodeInner<T>>>>,
     index: u64,
 }
@@ -34,6 +34,10 @@ impl<T: NodeData> Handle<T> {
     pub fn root(data: T) -> Self {
         let node = NodeInner::root(data);
         Self::new(node)
+    }
+
+    pub fn node_guard<'a>(&'a self) -> NodeGuard<'a, T> {
+        NodeGuard::new(self)
     }
 
     pub fn read_node<'a>(&'a self) -> MappedRwLockNotifyReadGuard<'a, NodeInner<T>> {

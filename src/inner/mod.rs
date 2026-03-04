@@ -3,21 +3,16 @@ use hashbrown::HashMap;
 use crate::NodeData;
 
 mod common;
-pub use common::Common;
-
-mod guard;
-pub use guard::NodeGuard;
+pub(crate) use common::Common;
 
 mod handle;
-pub use handle::Handle;
+pub(crate) use handle::Handle;
 
 mod multiplicity;
 use multiplicity::Multiplicity;
 
-pub type NodeIndex = u64;
-
 #[derive(Debug)]
-struct NodeInner<T: NodeData> {
+pub(crate) struct NodeInner<T: NodeData> {
     parent: Option<Handle<T>>,
     children: HashMap<u64, Handle<T>>,
     alive: bool,
@@ -38,6 +33,14 @@ impl<T: NodeData> NodeInner<T> {
         }
     }
 
+    pub fn data(&self) -> &T {
+        &self.data
+    }
+
+    pub fn parent(&self) -> Option<&Handle<T>> {
+        self.parent.as_ref()
+    }
+
     #[inline]
     pub fn root(data: T) -> Self {
         Self::new(None, Common::new(), data)
@@ -49,7 +52,7 @@ impl<T: NodeData> NodeInner<T> {
     }
 
     #[inline]
-    pub fn insert_child(&mut self, index: NodeIndex, handle: Handle<T>) {
+    pub fn insert_child(&mut self, index: u64, handle: Handle<T>) {
         let old = self.children.insert(index, handle);
         debug_assert!(old.is_none(), "index duplicate");
     }

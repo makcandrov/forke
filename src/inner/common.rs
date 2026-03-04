@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::sync::{Arc, atomic::AtomicU64};
 
 #[derive(Debug, Clone)]
-pub struct Common {
+pub(crate) struct Common {
     inner: Arc<CommonInner>,
 }
 

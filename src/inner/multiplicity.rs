@@ -2,7 +2,7 @@ use quick_impl::quick_impl_all;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[quick_impl_all(pub const is, pub into, pub try_into)]
-pub enum Multiplicity<T> {
+pub(crate) enum Multiplicity<T> {
     None,
     Single(T),
     Multiple,

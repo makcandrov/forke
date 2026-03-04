@@ -1,4 +1,4 @@
-use crate::{NodeData, inner::Handle};
+use crate::{NodeData, NodeGuard, inner::Handle};
 
 #[derive(Debug)]
 pub struct Node<T: NodeData> {
@@ -28,16 +28,16 @@ impl<T: NodeData> Node<T> {
             .collect()
     }
 
-    // pub fn read(&self) -> NodeGuard<'_, T> {
-    //     self.handle.read()
-    // }
+    pub fn read(&self) -> NodeGuard<'_, T> {
+        self.handle.node_guard()
+    }
 
-    // pub fn search<U, F>(&self, f: F) -> Option<U>
-    // where
-    //     F: Fn(&T) -> Option<U>,
-    // {
-    //     self.read().search(f)
-    // }
+    pub fn search<U, F>(&self, f: F) -> Option<U>
+    where
+        F: Fn(&T) -> Option<U>,
+    {
+        self.read().search(f)
+    }
 }
 
 impl<T: NodeData> Drop for Node<T> {

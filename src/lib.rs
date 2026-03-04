@@ -7,6 +7,8 @@ pub use data::NodeData;
 mod inner;
 
 mod guard;
+pub use guard::NodeGuard;
+
 mod iter;
 
 mod merge;
