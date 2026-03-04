@@ -1,4 +1,4 @@
-use crate::{NodeData, NodeGuard, inner::Handle};
+use crate::{AncestorIter, NodeData, NodeGuard, inner::Handle};
 
 #[derive(Debug)]
 pub struct Node<T: NodeData> {
@@ -30,6 +30,10 @@ impl<T: NodeData> Node<T> {
 
     pub fn read(&self) -> NodeGuard<'_, T> {
         self.handle.node_guard()
+    }
+
+    pub fn iter(&self) -> AncestorIter<T> {
+        AncestorIter::new(&self.handle)
     }
 
     pub fn search<U, F>(&self, f: F) -> Option<U>

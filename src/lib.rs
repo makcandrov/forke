@@ -10,6 +10,7 @@ mod guard;
 pub use guard::NodeGuard;
 
 mod iter;
+pub use iter::{AncestorGuard, AncestorIter};
 
 mod merge;
 pub use merge::{Merge, MergeInv};
