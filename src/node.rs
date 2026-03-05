@@ -1,6 +1,7 @@
-use crate::{
-    AncestorGuards, AncestorIter, NodeData, NodeGuard, StaticNodeGuard, inner::StrongHandle,
-};
+use crate::{AncestorGuards, AncestorIter, Merge, NodeGuard, StaticNodeGuard, inner::StrongHandle};
+
+pub trait NodeData: Merge + Send + Sync + 'static {}
+impl<T> NodeData for T where T: Merge + Send + Sync + 'static {}
 
 #[derive(Debug)]
 pub struct Node<T: NodeData> {
