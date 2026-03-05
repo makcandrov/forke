@@ -6,15 +6,15 @@ mod common;
 pub(crate) use common::Common;
 
 mod handle;
-pub(crate) use handle::Handle;
+pub(crate) use handle::{StrongHandle, WeakHandle};
 
 mod multiplicity;
 use multiplicity::Multiplicity;
 
 #[derive(Debug)]
 pub(crate) struct NodeInner<T: NodeData> {
-    parent: Option<Handle<T>>,
-    children: HashMap<u64, Handle<T>>,
+    parent: Option<StrongHandle<T>>,
+    children: HashMap<u64, WeakHandle<T>>,
     alive: bool,
     index: u64,
     common: Common,
@@ -22,7 +22,7 @@ pub(crate) struct NodeInner<T: NodeData> {
 }
 
 impl<T: NodeData> NodeInner<T> {
-    pub fn new(parent: Option<Handle<T>>, common: Common, data: T) -> Self {
+    pub fn new(parent: Option<StrongHandle<T>>, common: Common, data: T) -> Self {
         Self {
             parent,
             children: HashMap::new(),
@@ -37,7 +37,7 @@ impl<T: NodeData> NodeInner<T> {
         &self.data
     }
 
-    pub fn parent(&self) -> Option<&Handle<T>> {
+    pub fn parent(&self) -> Option<&StrongHandle<T>> {
         self.parent.as_ref()
     }
 
@@ -47,12 +47,12 @@ impl<T: NodeData> NodeInner<T> {
     }
 
     #[inline]
-    pub fn child(parent: Handle<T>, common: Common, data: T) -> Self {
+    pub fn child(parent: StrongHandle<T>, common: Common, data: T) -> Self {
         Self::new(Some(parent), common, data)
     }
 
     #[inline]
-    pub fn insert_child(&mut self, index: u64, handle: Handle<T>) {
+    pub fn insert_child(&mut self, index: u64, handle: WeakHandle<T>) {
         let old = self.children.insert(index, handle);
         debug_assert!(old.is_none(), "index duplicate");
     }

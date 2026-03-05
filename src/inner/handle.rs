@@ -1,20 +1,29 @@
-use std::{ptr, sync::Arc};
+use std::{
+    ptr,
+    sync::{Arc, Weak},
+};
 
 use lock_notify::{
     MappedRwLockNotifyReadGuard, RwLockNotify, RwLockNotifyReadGuard, RwLockNotifyWriteGuard,
 };
 
-use crate::{MergeInv, NodeData, NodeGuard};
+use crate::{MergeInv, NodeData, NodeGuard, guard::StaticNodeGuard};
 
 use super::{Multiplicity, NodeInner};
 
 #[derive(Debug)]
-pub(crate) struct Handle<T: NodeData> {
+pub(crate) struct StrongHandle<T: NodeData> {
     inner: Arc<RwLockNotify<Option<NodeInner<T>>>>,
     index: u64,
 }
 
-impl<T: NodeData> Clone for Handle<T> {
+#[derive(Debug)]
+pub(crate) struct WeakHandle<T: NodeData> {
+    inner: Weak<RwLockNotify<Option<NodeInner<T>>>>,
+    index: u64,
+}
+
+impl<T: NodeData> Clone for StrongHandle<T> {
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
@@ -23,7 +32,25 @@ impl<T: NodeData> Clone for Handle<T> {
     }
 }
 
-impl<T: NodeData> Handle<T> {
+impl<T: NodeData> Clone for WeakHandle<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: Weak::clone(&self.inner),
+            index: self.index,
+        }
+    }
+}
+
+impl<T: NodeData> WeakHandle<T> {
+    pub fn upgrade(&self) -> Option<StrongHandle<T>> {
+        Some(StrongHandle {
+            inner: Weak::upgrade(&self.inner)?,
+            index: self.index,
+        })
+    }
+}
+
+impl<T: NodeData> StrongHandle<T> {
     fn new(node: NodeInner<T>) -> Self {
         Self {
             index: node.index,
@@ -36,8 +63,23 @@ impl<T: NodeData> Handle<T> {
         Self::new(node)
     }
 
+    pub fn downgrade(&self) -> WeakHandle<T> {
+        WeakHandle {
+            inner: Arc::downgrade(&self.inner),
+            index: self.index,
+        }
+    }
+
+    fn ptr_eq(&self, weak: &WeakHandle<T>) -> bool {
+        ptr::eq(Arc::as_ptr(&self.inner), Weak::as_ptr(&weak.inner))
+    }
+
     pub fn node_guard<'a>(&'a self) -> NodeGuard<'a, T> {
         NodeGuard::new(self)
+    }
+
+    pub fn static_node_guard(self) -> StaticNodeGuard<T> {
+        StaticNodeGuard::new(self)
     }
 
     pub fn read_node<'a>(&'a self) -> MappedRwLockNotifyReadGuard<'a, NodeInner<T>> {
@@ -62,16 +104,20 @@ impl<T: NodeData> Handle<T> {
             .map(move |data| self.add_child(node_guard.as_mut().unwrap(), data))
     }
 
-    fn add_child(&self, node: &mut NodeInner<T>, data: T) -> Handle<T> {
+    fn add_child(&self, node: &mut NodeInner<T>, data: T) -> StrongHandle<T> {
         let parent_handle = self.clone();
         let child_node = NodeInner::child(parent_handle, node.common.clone(), data);
         self.add_child_inner(node, child_node)
     }
 
-    fn add_child_inner(&self, node: &mut NodeInner<T>, child_node: NodeInner<T>) -> Handle<T> {
+    fn add_child_inner(
+        &self,
+        node: &mut NodeInner<T>,
+        child_node: NodeInner<T>,
+    ) -> StrongHandle<T> {
         let child_index = child_node.index;
-        let child_handle = Handle::new(child_node);
-        node.insert_child(child_index, child_handle.clone());
+        let child_handle = StrongHandle::new(child_node);
+        node.insert_child(child_index, child_handle.downgrade());
         child_handle
     }
 
@@ -83,7 +129,7 @@ impl<T: NodeData> Handle<T> {
             }
         };
 
-        let mut child_handle_opt: Option<Handle<T>> = None;
+        let mut child_handle_opt: Option<StrongHandle<T>> = None;
 
         loop {
             // Lock the child if there is some.
@@ -172,7 +218,7 @@ impl<T: NodeData> Handle<T> {
                     }
                     break;
                 }
-                Multiplicity::Single((child_index, child_handle_confirm)) => {
+                Multiplicity::Single((child_index, child_weak_handle)) => {
                     let child_index = *child_index;
 
                     if child_guard_opt.is_none() {
@@ -180,20 +226,17 @@ impl<T: NodeData> Handle<T> {
                         // We need to start everything over to lock the child first.
 
                         drop(child_guard_opt);
-                        child_handle_opt = Some(child_handle_confirm.clone());
+                        child_handle_opt = Some(child_weak_handle.upgrade().unwrap());
                         continue;
                     };
 
                     let mut child_guard = child_guard_opt.unwrap(); // verified above
                     let child_handle = child_handle_opt.as_ref().unwrap(); // verified above
 
-                    if !ptr::eq(
-                        Arc::as_ptr(&child_handle.inner),
-                        Arc::as_ptr(&child_handle_confirm.inner),
-                    ) {
+                    if !child_handle.ptr_eq(child_weak_handle) {
                         // Child has changed in the meantime.
                         drop(child_guard);
-                        child_handle_opt = Some(child_handle_confirm.clone());
+                        child_handle_opt = Some(child_weak_handle.upgrade().unwrap());
                         continue;
                     }
 

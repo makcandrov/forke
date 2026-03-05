@@ -7,10 +7,10 @@ pub use data::NodeData;
 mod inner;
 
 mod guard;
-pub use guard::NodeGuard;
+pub use guard::{NodeGuard, StaticNodeGuard};
 
 mod iter;
-pub use iter::{AncestorGuard, AncestorIter};
+pub use iter::{AncestorGuards, AncestorIter};
 
 mod merge;
 pub use merge::{Merge, MergeInv};

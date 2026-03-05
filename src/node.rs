@@ -1,15 +1,17 @@
-use crate::{AncestorIter, NodeData, NodeGuard, inner::Handle};
+use crate::{
+    AncestorGuards, AncestorIter, NodeData, NodeGuard, StaticNodeGuard, inner::StrongHandle,
+};
 
 #[derive(Debug)]
 pub struct Node<T: NodeData> {
-    handle: Handle<T>,
+    handle: StrongHandle<T>,
 }
 
 impl<T: NodeData> Node<T> {
     #[inline]
     pub fn root(data: T) -> Self {
         Self {
-            handle: Handle::root(data),
+            handle: StrongHandle::root(data),
         }
     }
 
@@ -28,19 +30,23 @@ impl<T: NodeData> Node<T> {
             .collect()
     }
 
-    pub fn read(&self) -> NodeGuard<'_, T> {
+    pub fn guard(&self) -> NodeGuard<'_, T> {
         self.handle.node_guard()
     }
 
-    pub fn iter(&self) -> AncestorIter<T> {
-        AncestorIter::new(&self.handle)
+    pub fn static_guard(&self) -> StaticNodeGuard<T> {
+        self.handle.clone().static_node_guard()
+    }
+
+    pub fn iter<'a>(&self, storage: &'a mut AncestorGuards<T>) -> AncestorIter<'a, T> {
+        AncestorIter::new(&self.handle, storage)
     }
 
     pub fn search<U, F>(&self, f: F) -> Option<U>
     where
         F: Fn(&T) -> Option<U>,
     {
-        self.read().search(f)
+        self.iter(&mut AncestorGuards::new()).find_map(f)
     }
 }
 
