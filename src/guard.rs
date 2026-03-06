@@ -7,11 +7,16 @@ use crate::{
     inner::{NodeInner, StrongHandle},
 };
 
+/// A read-lock guard on a node, borrowed from a [`crate::Node`] handle.
+/// Provides access to the node's data and its parent.
 #[derive(Debug)]
 pub struct NodeGuard<'a, T: NodeData> {
     guard: MappedRwLockNotifyReadGuard<'a, NodeInner<T>>,
 }
 
+/// An owned read-lock guard on a node. Unlike [`NodeGuard`], this is not
+/// tied to the lifetime of a [`crate::Node`] handle — it keeps the
+/// underlying allocation alive on its own.
 #[derive(Debug)]
 pub struct StaticNodeGuard<T: NodeData> {
     // guard dropped before _handle (field declaration order)
@@ -25,10 +30,12 @@ pub struct StaticNodeGuard<T: NodeData> {
 }
 
 impl<'a, T: NodeData> NodeGuard<'a, T> {
+    /// Returns a reference to the node's data.
     pub fn data(&self) -> &T {
         self.guard.data()
     }
 
+    /// Acquires a read lock on the parent node, if any.
     pub fn parent(&'a self) -> Option<Self> {
         self.parent_handle().map(|parent| Self::new(parent))
     }
@@ -43,6 +50,8 @@ impl<'a, T: NodeData> NodeGuard<'a, T> {
         }
     }
 
+    /// Walks from this node up to the root, returning the first non-`None`
+    /// value produced by `f`.
     pub fn search<U, F>(&self, f: F) -> Option<U>
     where
         F: Fn(&T) -> Option<U>,
@@ -71,6 +80,7 @@ impl<T: NodeData> StaticNodeGuard<T> {
         }
     }
 
+    /// Returns a reference to the node's data.
     pub fn data(&self) -> &T {
         self.guard.data()
     }
@@ -79,6 +89,7 @@ impl<T: NodeData> StaticNodeGuard<T> {
         self.guard.guard.parent()
     }
 
+    /// Acquires a read lock on the parent node, if any.
     pub fn parent(&self) -> Option<Self> {
         self.parent_handle().map(|parent| Self::new(parent.clone()))
     }

@@ -7,7 +7,7 @@ mod guard;
 pub use guard::{NodeGuard, StaticNodeGuard};
 
 mod iter;
-pub use iter::{AncestorGuards, AncestorIter};
+pub use iter::{TraverseIter, TraverseRefIter, TraverseGuards};
 
 mod merge;
 pub use merge::{Merge, MergeInv};

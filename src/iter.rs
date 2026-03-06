@@ -1,38 +1,64 @@
 use crate::{NodeData, StaticNodeGuard, inner::StrongHandle};
 
-/// Stable storage for the read-lock guards accumulated during ancestor
-/// traversal. Create one with [`AncestorGuards::new`] and pass a mutable
-/// reference to [`crate::Node::iter`]. The `&T` references yielded by the iterator
-/// are valid for the lifetime of this borrow — the borrow checker prevents
-/// any removal of guards while those references are alive.
-pub struct AncestorGuards<T: NodeData> {
+/// Iterator that walks from a node up to the root, yielding
+/// [`StaticNodeGuard<T>`] values. Each guard holds a read lock on the visited
+/// node; dropping the guard releases the lock.
+pub struct TraverseIter<T: NodeData> {
+    current: Option<StrongHandle<T>>,
+}
+
+impl<T: NodeData> TraverseIter<T> {
+    pub(crate) fn new(start: &StrongHandle<T>) -> Self {
+        Self {
+            current: Some(start.clone()),
+        }
+    }
+}
+
+impl<T: NodeData> Iterator for TraverseIter<T> {
+    type Item = StaticNodeGuard<T>;
+
+    fn next(&mut self) -> Option<StaticNodeGuard<T>> {
+        let handle = self.current.take()?;
+        let guard = handle.static_node_guard();
+        self.current = guard.parent_handle().cloned();
+        Some(guard)
+    }
+}
+
+/// Stable storage for the read-lock guards accumulated during traversal.
+/// Create one with [`TraverseGuards::new`] and pass a mutable reference to
+/// [`crate::Node::traverse_ref`]. The `&T` references yielded by the iterator
+/// are valid for the lifetime of this borrow.
+pub struct TraverseGuards<T: NodeData> {
     guards: Vec<StaticNodeGuard<T>>,
 }
 
-impl<T: NodeData> AncestorGuards<T> {
+impl<T: NodeData> TraverseGuards<T> {
+    /// Creates an empty guard storage.
     pub fn new() -> Self {
         Self { guards: Vec::new() }
     }
 }
 
-impl<T: NodeData> Default for AncestorGuards<T> {
+impl<T: NodeData> Default for TraverseGuards<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
 /// Iterator that walks from a node up to the root, yielding `&'a T`
-/// references valid for the lifetime `'a` of the [`AncestorGuards`] borrow.
-/// Implements [`std::iter::Iterator`]; guards accumulate in the external
-/// storage so read locks on every visited node are held for `'a`, preventing
-/// concurrent merges from invalidating the returned references.
-pub struct AncestorIter<'a, T: NodeData> {
+/// references valid for the lifetime `'a` of the [`TraverseGuards`] borrow.
+/// Guards accumulate in the external storage so read locks on every visited
+/// node are held for `'a`, preventing concurrent merges from invalidating the
+/// returned references.
+pub struct TraverseRefIter<'a, T: NodeData> {
     current: Option<StrongHandle<T>>,
-    storage: &'a mut AncestorGuards<T>,
+    storage: &'a mut TraverseGuards<T>,
 }
 
-impl<'a, T: NodeData> AncestorIter<'a, T> {
-    pub(crate) fn new(start: &StrongHandle<T>, storage: &'a mut AncestorGuards<T>) -> Self {
+impl<'a, T: NodeData> TraverseRefIter<'a, T> {
+    pub(crate) fn new(start: &StrongHandle<T>, storage: &'a mut TraverseGuards<T>) -> Self {
         Self {
             current: Some(start.clone()),
             storage,
@@ -40,7 +66,7 @@ impl<'a, T: NodeData> AncestorIter<'a, T> {
     }
 }
 
-impl<'a, T: NodeData> Iterator for AncestorIter<'a, T> {
+impl<'a, T: NodeData> Iterator for TraverseRefIter<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<&'a T> {

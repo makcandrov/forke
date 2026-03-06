@@ -4,11 +4,17 @@ use std::{
     mem::replace,
 };
 
+/// Defines how a child node's data is folded into its parent when the child
+/// is removed from the tree.
 pub trait Merge {
+    /// Merges `child` into `parent`.
     fn merge(parent: &mut Self, child: Self);
 }
 
+/// Inverse merge direction — folds a parent's data into its child. This is
+/// auto-implemented for all [`Merge`] types by swapping then merging.
 pub trait MergeInv: Merge {
+    /// Merges `parent` into `child`.
     fn merge_inv(child: &mut Self, parent: Self);
 }
 
