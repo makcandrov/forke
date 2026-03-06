@@ -1,5 +1,5 @@
 use crate::{
-    Merge, NodeGuard, StaticNodeGuard, TraverseIter, TraverseRefIter, TraverseGuards,
+    Merge, NodeGuard, OwnedNodeGuard, TraverseGuards, TraverseIter, TraverseRefIter,
     inner::StrongHandle,
 };
 
@@ -21,23 +21,26 @@ pub struct Node<T: NodeData> {
 impl<T: NodeData> Node<T> {
     /// Creates a new root node with the given data.
     #[inline]
+    #[must_use]
     pub fn root(data: T) -> Self {
         Self {
             handle: StrongHandle::root(data),
         }
     }
 
-    /// Adds a child node with the given data and returns a handle to it.
+    /// Forks this node, creating a child with the given data.
     #[inline]
-    pub fn add_child(&self, data: T) -> Self {
+    #[must_use]
+    pub fn fork(&self, data: T) -> Self {
         Self {
             handle: self.handle.create_child(data),
         }
     }
 
-    /// Adds multiple children at once, returning handles to all of them.
+    /// Forks this node multiple times, returning handles to all children.
     #[inline]
-    pub fn add_children(&self, data: impl IntoIterator<Item = T>) -> Vec<Self> {
+    #[must_use]
+    pub fn fork_many(&self, data: impl IntoIterator<Item = T>) -> Vec<Self> {
         self.handle
             .create_children(data)
             .map(|handle| Self { handle })
@@ -45,6 +48,7 @@ impl<T: NodeData> Node<T> {
     }
 
     /// Acquires a read lock on this node, borrowing `self`.
+    #[inline]
     pub fn guard(&self) -> NodeGuard<'_, T> {
         self.handle.node_guard()
     }
@@ -52,13 +56,15 @@ impl<T: NodeData> Node<T> {
     /// Acquires a read lock on this node with `'static` lifetime.
     /// The returned guard keeps the underlying data alive independently of
     /// the `Node` handle.
-    pub fn static_guard(&self) -> StaticNodeGuard<T> {
+    #[inline]
+    pub fn owned_guard(&self) -> OwnedNodeGuard<T> {
         self.handle.clone().static_node_guard()
     }
 
     /// Returns an iterator that walks from this node up to the root,
-    /// yielding a [`StaticNodeGuard`] for each visited node. Each guard is
+    /// yielding an [`OwnedNodeGuard`] for each visited node. Each guard is
     /// independent — dropping it releases the read lock on that node.
+    #[inline]
     pub fn traverse(&self) -> TraverseIter<T> {
         TraverseIter::new(&self.handle)
     }
@@ -66,15 +72,15 @@ impl<T: NodeData> Node<T> {
     /// Returns an iterator that walks from this node up to the root,
     /// yielding `&T` references. Guards are accumulated in `guards` so all
     /// read locks are held for the lifetime of the borrow.
-    pub fn traverse_ref<'a>(
-        &self,
-        guards: &'a mut TraverseGuards<T>,
-    ) -> TraverseRefIter<'a, T> {
+    #[inline]
+    pub fn traverse_ref<'a>(&self, guards: &'a mut TraverseGuards<T>) -> TraverseRefIter<'a, T> {
         TraverseRefIter::new(&self.handle, guards)
     }
 
     /// Walks from this node up to the root, returning the first non-`None`
     /// value produced by `f`.
+    #[inline]
+    #[must_use]
     pub fn search<U, F>(&self, f: F) -> Option<U>
     where
         F: Fn(&T) -> Option<U>,

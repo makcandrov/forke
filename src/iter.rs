@@ -1,8 +1,9 @@
-use crate::{NodeData, StaticNodeGuard, inner::StrongHandle};
+use crate::{NodeData, OwnedNodeGuard, inner::StrongHandle};
 
 /// Iterator that walks from a node up to the root, yielding
-/// [`StaticNodeGuard<T>`] values. Each guard holds a read lock on the visited
+/// [`OwnedNodeGuard<T>`] values. Each guard holds a read lock on the visited
 /// node; dropping the guard releases the lock.
+#[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct TraverseIter<T: NodeData> {
     current: Option<StrongHandle<T>>,
 }
@@ -16,9 +17,10 @@ impl<T: NodeData> TraverseIter<T> {
 }
 
 impl<T: NodeData> Iterator for TraverseIter<T> {
-    type Item = StaticNodeGuard<T>;
+    type Item = OwnedNodeGuard<T>;
 
-    fn next(&mut self) -> Option<StaticNodeGuard<T>> {
+    #[inline]
+    fn next(&mut self) -> Option<OwnedNodeGuard<T>> {
         let handle = self.current.take()?;
         let guard = handle.static_node_guard();
         self.current = guard.parent_handle().cloned();
@@ -31,11 +33,12 @@ impl<T: NodeData> Iterator for TraverseIter<T> {
 /// [`crate::Node::traverse_ref`]. The `&T` references yielded by the iterator
 /// are valid for the lifetime of this borrow.
 pub struct TraverseGuards<T: NodeData> {
-    guards: Vec<StaticNodeGuard<T>>,
+    guards: Vec<OwnedNodeGuard<T>>,
 }
 
 impl<T: NodeData> TraverseGuards<T> {
     /// Creates an empty guard storage.
+    #[inline]
     pub fn new() -> Self {
         Self { guards: Vec::new() }
     }
@@ -52,6 +55,7 @@ impl<T: NodeData> Default for TraverseGuards<T> {
 /// Guards accumulate in the external storage so read locks on every visited
 /// node are held for `'a`, preventing concurrent merges from invalidating the
 /// returned references.
+#[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct TraverseRefIter<'a, T: NodeData> {
     current: Option<StrongHandle<T>>,
     storage: &'a mut TraverseGuards<T>,
@@ -69,6 +73,7 @@ impl<'a, T: NodeData> TraverseRefIter<'a, T> {
 impl<'a, T: NodeData> Iterator for TraverseRefIter<'a, T> {
     type Item = &'a T;
 
+    #[inline]
     fn next(&mut self) -> Option<&'a T> {
         let handle = self.current.take()?;
         let static_guard = handle.static_node_guard();

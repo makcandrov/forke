@@ -7,7 +7,7 @@ use lock_notify::{
     MappedRwLockNotifyReadGuard, RwLockNotify, RwLockNotifyReadGuard, RwLockNotifyWriteGuard,
 };
 
-use crate::{MergeInv, NodeData, NodeGuard, guard::StaticNodeGuard};
+use crate::{MergeInv, NodeData, NodeGuard, guard::OwnedNodeGuard};
 
 use super::{Multiplicity, NodeInner};
 
@@ -78,8 +78,8 @@ impl<T: NodeData> StrongHandle<T> {
         NodeGuard::new(self)
     }
 
-    pub fn static_node_guard(self) -> StaticNodeGuard<T> {
-        StaticNodeGuard::new(self)
+    pub fn static_node_guard(self) -> OwnedNodeGuard<T> {
+        OwnedNodeGuard::new(self)
     }
 
     pub fn read_node<'a>(&'a self) -> MappedRwLockNotifyReadGuard<'a, NodeInner<T>> {

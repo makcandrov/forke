@@ -4,10 +4,10 @@
 mod inner;
 
 mod guard;
-pub use guard::{NodeGuard, StaticNodeGuard};
+pub use guard::{NodeGuard, OwnedNodeGuard};
 
 mod iter;
-pub use iter::{TraverseIter, TraverseRefIter, TraverseGuards};
+pub use iter::{TraverseGuards, TraverseIter, TraverseRefIter};
 
 mod merge;
 pub use merge::{Merge, MergeInv};
