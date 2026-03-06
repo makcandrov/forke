@@ -1,6 +1,6 @@
 use std::mem::transmute;
 
-use lock_notify::MappedRwLockNotifyReadGuard;
+use lock_notify::{MappedRwLockNotifyReadGuard, MappedRwLockNotifyWriteGuard};
 
 use crate::{
     NodeData,
@@ -28,6 +28,25 @@ pub struct OwnedNodeGuard<T: NodeData> {
     // lifetime is that of the Arc, kept alive by `_handle`.
     // Field drop order (guard first, _handle second) upholds this invariant.
     guard: NodeGuard<'static, T>,
+    _handle: StrongHandle<T>,
+}
+
+/// A write-lock guard on a node, borrowed from a [`crate::Node`] handle.
+/// Provides mutable access to the node's data.
+#[derive(Debug)]
+#[must_use = "if unused the lock is immediately released"]
+pub struct NodeWriteGuard<'a, T: NodeData> {
+    guard: MappedRwLockNotifyWriteGuard<'a, T>,
+}
+
+/// An owned write-lock guard on a node. Unlike [`NodeWriteGuard`], this is not
+/// tied to the lifetime of a [`crate::Node`] handle — it keeps the
+/// underlying allocation alive on its own.
+#[derive(Debug)]
+#[must_use = "if unused the lock is immediately released"]
+pub struct OwnedNodeWriteGuard<T: NodeData> {
+    // SAFETY: same invariant as `OwnedNodeGuard` — guard dropped before _handle.
+    guard: NodeWriteGuard<'static, T>,
     _handle: StrongHandle<T>,
 }
 
@@ -121,5 +140,52 @@ impl<T: NodeData> OwnedNodeGuard<T> {
             current = guard.parent();
         }
         None
+    }
+}
+
+impl<'a, T: NodeData> NodeWriteGuard<'a, T> {
+    /// Returns a reference to the node's data.
+    #[inline]
+    pub fn data(&self) -> &T {
+        &self.guard
+    }
+
+    /// Returns a mutable reference to the node's data.
+    #[inline]
+    pub fn data_mut(&mut self) -> &mut T {
+        &mut self.guard
+    }
+
+    pub(crate) fn new(handle: &'a StrongHandle<T>) -> Self {
+        Self {
+            guard: handle.write_data(),
+        }
+    }
+}
+
+impl<T: NodeData> OwnedNodeWriteGuard<T> {
+    pub(crate) fn new(handle: StrongHandle<T>) -> Self {
+        // SAFETY: same as `OwnedNodeGuard` — guard borrows from the Arc inside
+        // `handle`, both stored together, guard dropped before `_handle`.
+        Self {
+            guard: unsafe {
+                transmute::<NodeWriteGuard<'_, T>, NodeWriteGuard<'static, T>>(NodeWriteGuard::new(
+                    &handle,
+                ))
+            },
+            _handle: handle,
+        }
+    }
+
+    /// Returns a reference to the node's data.
+    #[inline]
+    pub fn data(&self) -> &T {
+        self.guard.data()
+    }
+
+    /// Returns a mutable reference to the node's data.
+    #[inline]
+    pub fn data_mut(&mut self) -> &mut T {
+        self.guard.data_mut()
     }
 }

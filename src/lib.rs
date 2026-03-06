@@ -4,7 +4,7 @@
 mod inner;
 
 mod guard;
-pub use guard::{NodeGuard, OwnedNodeGuard};
+pub use guard::{NodeGuard, NodeWriteGuard, OwnedNodeGuard, OwnedNodeWriteGuard};
 
 mod iter;
 pub use iter::{TraverseGuards, TraverseIter, TraverseRefIter};

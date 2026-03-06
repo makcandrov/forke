@@ -1,6 +1,6 @@
 use crate::{
-    Merge, NodeGuard, OwnedNodeGuard, TraverseGuards, TraverseIter, TraverseRefIter,
-    inner::StrongHandle,
+    Merge, NodeGuard, NodeWriteGuard, OwnedNodeGuard, OwnedNodeWriteGuard, TraverseGuards,
+    TraverseIter, TraverseRefIter, inner::StrongHandle,
 };
 
 /// Convenience bound alias: types stored in a [`Node`] must implement
@@ -59,6 +59,21 @@ impl<T: NodeData> Node<T> {
     #[inline]
     pub fn owned_guard(&self) -> OwnedNodeGuard<T> {
         self.handle.clone().static_node_guard()
+    }
+
+    /// Acquires a write lock on this node, borrowing `self`.
+    /// Provides mutable access to the node's data.
+    #[inline]
+    pub fn guard_mut(&self) -> NodeWriteGuard<'_, T> {
+        self.handle.node_write_guard()
+    }
+
+    /// Acquires a write lock on this node with `'static` lifetime.
+    /// The returned guard keeps the underlying data alive independently of
+    /// the `Node` handle.
+    #[inline]
+    pub fn owned_guard_mut(&self) -> OwnedNodeWriteGuard<T> {
+        self.handle.clone().static_node_write_guard()
     }
 
     /// Returns an iterator that walks from this node up to the root,

@@ -4,10 +4,14 @@ use std::{
 };
 
 use lock_notify::{
-    MappedRwLockNotifyReadGuard, RwLockNotify, RwLockNotifyReadGuard, RwLockNotifyWriteGuard,
+    MappedRwLockNotifyReadGuard, MappedRwLockNotifyWriteGuard, RwLockNotify, RwLockNotifyReadGuard,
+    RwLockNotifyWriteGuard,
 };
 
-use crate::{MergeInv, NodeData, NodeGuard, guard::OwnedNodeGuard};
+use crate::{
+    MergeInv, NodeData, NodeGuard,
+    guard::{NodeWriteGuard, OwnedNodeGuard, OwnedNodeWriteGuard},
+};
 
 use super::{Multiplicity, NodeInner};
 
@@ -82,8 +86,22 @@ impl<T: NodeData> StrongHandle<T> {
         OwnedNodeGuard::new(self)
     }
 
+    pub fn node_write_guard<'a>(&'a self) -> NodeWriteGuard<'a, T> {
+        NodeWriteGuard::new(self)
+    }
+
+    pub fn static_node_write_guard(self) -> OwnedNodeWriteGuard<T> {
+        OwnedNodeWriteGuard::new(self)
+    }
+
     pub fn read_node<'a>(&'a self) -> MappedRwLockNotifyReadGuard<'a, NodeInner<T>> {
         RwLockNotifyReadGuard::map(self.inner.read(), |inner| inner.as_ref().unwrap())
+    }
+
+    pub fn write_data<'a>(&'a self) -> MappedRwLockNotifyWriteGuard<'a, T> {
+        RwLockNotifyWriteGuard::map(self.inner.write(), |inner| {
+            &mut inner.as_mut().unwrap().data
+        })
     }
 
     #[inline]
