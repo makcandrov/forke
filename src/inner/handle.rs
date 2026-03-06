@@ -3,35 +3,58 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use hashbrown::HashMap;
-use parking_lot::{RwLock, RwLockWriteGuard};
+use lock_notify::{
+    MappedRwLockNotifyReadGuard, RwLockNotify, RwLockNotifyReadGuard, RwLockNotifyWriteGuard,
+};
 
-use crate::{Merge, MergeInv, utils::Multiplicity};
+use crate::{MergeInv, NodeData, NodeGuard, guard::OwnedNodeGuard};
 
-use super::NodeInner;
+use super::{Multiplicity, NodeInner};
 
 #[derive(Debug)]
-pub(super) struct ChildHandle<T: Merge> {
-    pub(super) inner: Weak<RwLock<Option<NodeInner<T>>>>,
-}
-
-/// Handle of a child to its parent.
-#[derive(Debug)]
-pub(super) struct ParentHandle<T: Merge> {
-    pub(super) inner: Arc<RwLock<Option<NodeInner<T>>>>,
-    pub(super) child_index: usize,
-    pub(super) skip_drop: bool,
+pub(crate) struct StrongHandle<T: NodeData> {
+    inner: Arc<RwLockNotify<Option<NodeInner<T>>>>,
+    index: u64,
 }
 
 #[derive(Debug)]
-pub(crate) struct SelfHandle<T: Merge> {
-    pub(super) inner: Arc<RwLock<Option<NodeInner<T>>>>,
+pub(crate) struct WeakHandle<T: NodeData> {
+    inner: Weak<RwLockNotify<Option<NodeInner<T>>>>,
+    index: u64,
 }
 
-impl<T: Merge> SelfHandle<T> {
+impl<T: NodeData> Clone for StrongHandle<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: Arc::clone(&self.inner),
+            index: self.index,
+        }
+    }
+}
+
+impl<T: NodeData> Clone for WeakHandle<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: Weak::clone(&self.inner),
+            index: self.index,
+        }
+    }
+}
+
+impl<T: NodeData> WeakHandle<T> {
+    pub fn upgrade(&self) -> Option<StrongHandle<T>> {
+        Some(StrongHandle {
+            inner: Weak::upgrade(&self.inner)?,
+            index: self.index,
+        })
+    }
+}
+
+impl<T: NodeData> StrongHandle<T> {
     fn new(node: NodeInner<T>) -> Self {
         Self {
-            inner: Arc::new(RwLock::new(Some(node))),
+            index: node.index,
+            inner: Arc::new(RwLockNotify::new(Some(node))),
         }
     }
 
@@ -40,140 +63,199 @@ impl<T: Merge> SelfHandle<T> {
         Self::new(node)
     }
 
-    pub fn create_child(&self, data: T) -> Self {
-        self.write_node(|node| add_child(&self.inner, node, data))
+    pub fn downgrade(&self) -> WeakHandle<T> {
+        WeakHandle {
+            inner: Arc::downgrade(&self.inner),
+            index: self.index,
+        }
     }
 
-    #[inline]
-    pub fn create_children(&self, data: impl IntoIterator<Item = T>) -> impl Iterator<Item = Self> {
-        let mut node_guard =
-            RwLockWriteGuard::map(self.inner.write(), |node| node.as_mut().unwrap());
-        data.into_iter()
-            .map(move |data| add_child(&self.inner, &mut *node_guard, data))
+    fn ptr_eq(&self, weak: &WeakHandle<T>) -> bool {
+        ptr::eq(Arc::as_ptr(&self.inner), Weak::as_ptr(&weak.inner))
+    }
+
+    pub fn node_guard<'a>(&'a self) -> NodeGuard<'a, T> {
+        NodeGuard::new(self)
+    }
+
+    pub fn static_node_guard(self) -> OwnedNodeGuard<T> {
+        OwnedNodeGuard::new(self)
+    }
+
+    pub fn read_node<'a>(&'a self) -> MappedRwLockNotifyReadGuard<'a, NodeInner<T>> {
+        RwLockNotifyReadGuard::map(self.inner.read(), |inner| inner.as_ref().unwrap())
     }
 
     #[inline]
     fn write_node<U>(&self, f: impl FnOnce(&mut NodeInner<T>) -> U) -> U {
-        f(self.inner.write().as_mut().unwrap())
+        let mut node_guard = self.inner.write();
+        f(node_guard.as_mut().unwrap())
     }
-}
 
-fn add_child<T: Merge>(
-    self_inner: &Arc<RwLock<Option<NodeInner<T>>>>,
-    this: &mut NodeInner<T>,
-    data: T,
-) -> SelfHandle<T> {
-    this.add_child_with(|child_index| {
-        let parent_handle = ParentHandle {
-            inner: self_inner.clone(),
-            child_index,
-            skip_drop: false,
-        };
-        let child = NodeInner {
-            parent: Some(parent_handle),
-            children: HashMap::new(),
-            alive: true,
-            next_index: 0,
-            data,
-        };
-        let child_arc = Arc::new(RwLock::new(Some(child)));
-        let child_handle = ChildHandle {
-            inner: Arc::downgrade(&child_arc),
-        };
-        let self_handle = SelfHandle { inner: child_arc };
-        (child_handle, self_handle)
-    })
-}
-
-impl<T: Merge> ParentHandle<T> {
-    /// Drops the handle without running the custom drop, while still running drop of the other
-    /// fields.
     #[inline]
-    fn drop_forget(mut self) {
-        self.skip_drop = true;
+    pub fn create_child(&self, data: T) -> Self {
+        self.write_node(|node| self.add_child(node, data))
     }
-}
 
-impl<T: Merge> Drop for SelfHandle<T> {
-    fn drop(&mut self) {
-        let mut child_arc_opt: Option<Arc<RwLock<Option<NodeInner<T>>>>> = None;
+    #[inline]
+    pub fn create_children(&self, data: impl IntoIterator<Item = T>) -> impl Iterator<Item = Self> {
+        let mut node_guard = self.inner.write();
+        data.into_iter()
+            .map(move |data| self.add_child(node_guard.as_mut().unwrap(), data))
+    }
+
+    fn add_child(&self, node: &mut NodeInner<T>, data: T) -> StrongHandle<T> {
+        let parent_handle = self.clone();
+        let child_node = NodeInner::child(parent_handle, node.common.clone(), data);
+        self.add_child_inner(node, child_node)
+    }
+
+    fn add_child_inner(
+        &self,
+        node: &mut NodeInner<T>,
+        child_node: NodeInner<T>,
+    ) -> StrongHandle<T> {
+        let child_index = child_node.index;
+        let child_handle = StrongHandle::new(child_node);
+        node.insert_child(child_index, child_handle.downgrade());
+        child_handle
+    }
+
+    pub fn try_drop(&mut self, self_drop: bool) {
+        let retry_drop = || {
+            let mut handle = self.clone();
+            move || {
+                handle.try_drop(self_drop);
+            }
+        };
+
+        let mut child_handle_opt: Option<StrongHandle<T>> = None;
 
         loop {
-            let mut child_guard_opt = if let Some(child_arc) = &child_arc_opt {
-                let Ok(child_guard) = RwLockWriteGuard::try_map(child_arc.write(), Option::as_mut)
+            // Lock the child if there is some.
+            let child_guard_opt = if let Some(child_strong_handle) = &child_handle_opt {
+                let Some(child_opt_guard) = child_strong_handle.inner.try_write_or_else(retry_drop)
                 else {
-                    // The child may have been dropped in the meantime. We need to start everything
-                    // over.
-                    child_arc_opt = None;
-                    continue;
+                    // Another thread reads the child - delay the drop.
+                    return;
                 };
-                Some(child_guard)
+
+                match child_opt_guard.try_map(Option::as_mut) {
+                    Ok(child_guard) => Some(child_guard),
+                    guard @ Err(_) => {
+                        drop(guard);
+                        // The child may have been dropped in the meantime. We need to start everything over.
+                        child_handle_opt = None;
+                        continue;
+                    }
+                }
             } else {
                 None
             };
 
-            let mut node_opt_guard = self.inner.write();
-            let node = &mut node_opt_guard
-                .as_mut()
-                .expect("node must not be dropped as a user handle exist");
+            // Lock the node.
+            let Some(mut node_opt_guard) = self.inner.try_write_or_else(retry_drop) else {
+                // Another thread reads the node - delay the drop.
+                return;
+            };
+
+            let Some(node) = node_opt_guard.as_ref() else {
+                // The node has already been merged away by a concurrent retry.
+                return;
+            };
+
+            let node_index = node.index;
 
             match Multiplicity::from_iter(&node.children) {
                 Multiplicity::None => {
                     // No children, the node is a leaf that can be removed from the tree.
-                    node.alive = false;
 
-                    let Some(parent_handle) = &node.parent else {
+                    let node = node_opt_guard.as_mut().unwrap();
+
+                    if self_drop {
+                        node.alive = false;
+                    } else if node.alive {
+                        // Cascade reached a live node. Stop.
+                        break;
+                    }
+
+                    let Some(mut parent_handle) = node.parent.take() else {
                         // If this is the root, there is nothing to do.
                         break;
                     };
 
-                    let parent_arc = &parent_handle.inner;
-                    let mut parent_opt_guard = parent_arc.write();
-                    let parent = parent_opt_guard
-                        .as_mut()
-                        .expect("parent not removed from the tree");
+                    let Some(mut parent_guard) = parent_handle.inner.try_write_or_else(retry_drop)
+                    else {
+                        // Another thread reads the parent - delay the drop.
+                        node.parent = Some(parent_handle);
+                        return;
+                    };
 
-                    let child_handle = parent
+                    let parent_node = parent_guard
+                        .as_mut()
+                        .expect("parent must not be dropped as it has a child");
+
+                    let child_handle = parent_node
                         .children
-                        .remove(&parent_handle.child_index)
+                        .remove(&node_index)
                         .expect("node is child of parent");
+
                     drop(child_handle);
+                    drop(parent_guard);
+
+                    // The node is removed from the tree.
+                    // We need to recursively drop its parent if necessary.
+                    parent_handle.try_drop(false);
 
                     break;
                 }
                 Multiplicity::Multiple => {
                     // Two children or more, the node must not be dropped.
-                    node.alive = false;
+
+                    let node = node_opt_guard.as_mut().unwrap();
+                    if self_drop {
+                        node.alive = false;
+                    }
                     break;
                 }
-                Multiplicity::Single((child_index, child_handle)) => {
+                Multiplicity::Single((child_index, child_weak_handle)) => {
                     let child_index = *child_index;
 
-                    let Some(ref mut child_guard) = child_guard_opt else {
+                    if child_guard_opt.is_none() {
+                        // The node has a children that has not yet been locked.
+                        // We need to start everything over to lock the child first.
+
                         drop(child_guard_opt);
-                        let child_arc = Weak::upgrade(&child_handle.inner)
-                            .expect("child should not be dropped while the weak exists");
-                        child_arc_opt.replace(child_arc);
+                        child_handle_opt = Some(child_weak_handle.upgrade().unwrap());
                         continue;
                     };
 
-                    let child_arc = child_arc_opt.as_ref().expect("checked above");
+                    let mut child_guard = child_guard_opt.unwrap(); // verified above
+                    let child_handle = child_handle_opt.as_ref().unwrap(); // verified above
 
-                    if !ptr::eq(Arc::as_ptr(child_arc), Weak::as_ptr(&child_handle.inner)) {
+                    if !child_handle.ptr_eq(child_weak_handle) {
                         // Child has changed in the meantime.
-                        let child_arc = Weak::upgrade(&child_handle.inner)
-                            .expect("child should not be dropped while the weake exists");
-                        drop(child_guard_opt);
-                        drop(node_opt_guard);
-                        child_arc_opt.replace(child_arc);
+                        drop(child_guard);
+                        child_handle_opt = Some(child_weak_handle.upgrade().unwrap());
                         continue;
                     }
 
-                    if let Some(parent_handle) = &node.parent {
-                        let parent_arc = parent_handle.inner.clone();
+                    if !self_drop && node.alive {
+                        // Cascade reached a live node. Stop.
+                        break;
+                    }
+
+                    if let Some(parent_handle) = node.parent.clone() {
+                        // The node isn't the root.
+
+                        let Some(parent_guard) = parent_handle.inner.try_write_or_else(retry_drop)
+                        else {
+                            // Another thread reads the parent - delay the drop.
+                            return;
+                        };
 
                         let mut parent_guard =
-                            RwLockWriteGuard::map(parent_arc.write(), |parent_opt| {
+                            RwLockNotifyWriteGuard::map(parent_guard, |parent_opt| {
                                 parent_opt
                                     .as_mut()
                                     .expect("parent must not be dropped as a child exists")
@@ -182,24 +264,27 @@ impl<T: Merge> Drop for SelfHandle<T> {
                         // We can take ownership of node.
 
                         let node_owned = node_opt_guard.take().unwrap();
-                        let mut parent_handle = node_owned.parent.expect("node has a prent");
+                        let parent_handle = node_owned.parent.expect("node has a parent");
 
-                        let (child_index_confirm, child_handle) =
-                            Multiplicity::from_iter(node_owned.children)
-                                .into_single()
-                                .expect("node has a single child");
-                        assert_eq!(child_index, child_index_confirm);
+                        let child_handle = {
+                            let (child_index_confirm, child_handle) =
+                                Multiplicity::from_iter(node_owned.children)
+                                    .into_single()
+                                    .expect("node has a single child");
+
+                            assert_eq!(child_index, child_index_confirm);
+                            child_handle
+                        };
 
                         // Link parent to child
 
                         let node_child_handle = parent_guard
                             .children
-                            .remove(&parent_handle.child_index)
+                            .remove(&node_index)
                             .expect("node is child of parent");
                         drop(node_child_handle);
 
-                        let new_child_index = parent_guard.add_child(child_handle);
-                        parent_handle.child_index = new_child_index;
+                        parent_guard.insert_child(child_index, child_handle);
 
                         // Link child to parent
 
@@ -208,7 +293,8 @@ impl<T: Merge> Drop for SelfHandle<T> {
                             .replace(parent_handle)
                             .expect("child has a parent");
 
-                        node_parent_handle.drop_forget();
+                        // This handle is stale, do not run custom drop logic.
+                        drop(node_parent_handle);
 
                         // Merge data
                         MergeInv::merge_inv(&mut child_guard.data, node_owned.data);
@@ -216,8 +302,8 @@ impl<T: Merge> Drop for SelfHandle<T> {
                         break;
                     } else {
                         // The node is the root.
-
                         // We can take ownership of node.
+
                         let node_owned = node_opt_guard.take().unwrap();
 
                         let (child_index_confirm, child_handle) =
@@ -228,169 +314,11 @@ impl<T: Merge> Drop for SelfHandle<T> {
                         drop(child_handle);
 
                         // Remove parent from the child.
-
                         let node_parent_handle =
                             child_guard.parent.take().expect("child has a parent");
 
-                        node_parent_handle.drop_forget();
-
-                        // Merge data
-                        MergeInv::merge_inv(&mut child_guard.data, node_owned.data);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-}
-
-impl<T: Merge> Drop for ParentHandle<T> {
-    fn drop(&mut self) {
-        if self.skip_drop {
-            return;
-        }
-
-        let mut child_arc_opt: Option<Arc<RwLock<Option<NodeInner<T>>>>> = None;
-
-        loop {
-            let mut child_guard_opt = if let Some(child_arc) = &child_arc_opt {
-                let Ok(child_guard) = RwLockWriteGuard::try_map(child_arc.write(), Option::as_mut)
-                else {
-                    // The child may have been dropped in the meantime. We need to start everything
-                    // over.
-                    child_arc_opt = None;
-                    continue;
-                };
-                Some(child_guard)
-            } else {
-                None
-            };
-
-            let mut node_opt_guard = self.inner.write();
-            let node = &mut node_opt_guard
-                .as_mut()
-                .expect("node must not be dropped as a user handle exist");
-
-            if node.alive {
-                break;
-            }
-
-            match Multiplicity::from_iter(&node.children) {
-                Multiplicity::None => {
-                    // No children, the node is a leaf that can be removed from the tree.
-                    node.alive = false;
-
-                    let Some(parent_handle) = &node.parent else {
-                        // If this is the root, there is nothing to do.
-                        break;
-                    };
-
-                    let parent_arc = &parent_handle.inner;
-                    let mut parent_opt_guard = parent_arc.write();
-                    let parent = parent_opt_guard
-                        .as_mut()
-                        .expect("parent not removed from the tree");
-
-                    let child_handle = parent
-                        .children
-                        .remove(&parent_handle.child_index)
-                        .expect("node is child of parent");
-                    drop(child_handle);
-
-                    break;
-                }
-                Multiplicity::Multiple => {
-                    // Two children or more, the node must not be dropped.
-                    node.alive = false;
-                    break;
-                }
-                Multiplicity::Single((child_index, child_handle)) => {
-                    let child_index = *child_index;
-
-                    let Some(ref mut child_guard) = child_guard_opt else {
-                        drop(child_guard_opt);
-                        let child_arc = Weak::upgrade(&child_handle.inner)
-                            .expect("child should not be dropped while the weak exists");
-                        child_arc_opt.replace(child_arc);
-                        continue;
-                    };
-
-                    let child_arc = child_arc_opt.as_ref().expect("checked above");
-
-                    if !ptr::eq(Arc::as_ptr(child_arc), Weak::as_ptr(&child_handle.inner)) {
-                        // Child has changed in the meantime.
-                        let child_arc = Weak::upgrade(&child_handle.inner)
-                            .expect("child should not be dropped while the weake exists");
-                        drop(child_guard_opt);
-                        drop(node_opt_guard);
-                        child_arc_opt.replace(child_arc);
-                        continue;
-                    }
-
-                    if let Some(parent_handle) = &node.parent {
-                        let parent_arc = parent_handle.inner.clone();
-
-                        let mut parent_guard =
-                            RwLockWriteGuard::map(parent_arc.write(), |parent_opt| {
-                                parent_opt
-                                    .as_mut()
-                                    .expect("parent must not be dropped as a child exists")
-                            });
-
-                        // We can take ownership of node.
-
-                        let node_owned = node_opt_guard.take().unwrap();
-                        let mut parent_handle = node_owned.parent.expect("node has a prent");
-
-                        let (child_index_confirm, child_handle) =
-                            Multiplicity::from_iter(node_owned.children)
-                                .into_single()
-                                .expect("node has a single child");
-                        assert_eq!(child_index, child_index_confirm);
-
-                        // Link parent to child
-
-                        let node_child_handle = parent_guard
-                            .children
-                            .remove(&parent_handle.child_index)
-                            .expect("node is child of parent");
-                        drop(node_child_handle);
-
-                        let new_child_index = parent_guard.add_child(child_handle);
-                        parent_handle.child_index = new_child_index;
-
-                        // Link child to parent
-
-                        let node_parent_handle = child_guard
-                            .parent
-                            .replace(parent_handle)
-                            .expect("child has a parent");
-
-                        node_parent_handle.drop_forget();
-
-                        // Merge data
-                        MergeInv::merge_inv(&mut child_guard.data, node_owned.data);
-
-                        break;
-                    } else {
-                        // The node is the root.
-
-                        // We can take ownership of node.
-                        let node_owned = node_opt_guard.take().unwrap();
-
-                        let (child_index_confirm, child_handle) =
-                            Multiplicity::from_iter(node_owned.children)
-                                .into_single()
-                                .expect("node has a single child");
-                        assert_eq!(child_index, child_index_confirm);
-                        drop(child_handle);
-
-                        // Remove parent from the child.
-
-                        let node_parent_handle =
-                            child_guard.parent.take().expect("child has a parent");
-
-                        node_parent_handle.drop_forget();
+                        // This handle is stale, do not run custom drop logic.
+                        drop(node_parent_handle);
 
                         // Merge data
                         MergeInv::merge_inv(&mut child_guard.data, node_owned.data);

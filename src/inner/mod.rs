@@ -1,48 +1,59 @@
 use hashbrown::HashMap;
 
-use crate::Merge;
+use crate::NodeData;
 
-mod guard;
-pub use guard::NodeGuard;
+mod common;
+pub(crate) use common::Common;
 
 mod handle;
-pub(crate) use handle::SelfHandle;
-use handle::{ChildHandle, ParentHandle};
+pub(crate) use handle::{StrongHandle, WeakHandle};
+
+mod multiplicity;
+use multiplicity::Multiplicity;
 
 #[derive(Debug)]
-struct NodeInner<T: Merge> {
-    parent: Option<ParentHandle<T>>,
-    children: HashMap<usize, ChildHandle<T>>,
+pub(crate) struct NodeInner<T: NodeData> {
+    parent: Option<StrongHandle<T>>,
+    children: HashMap<u64, WeakHandle<T>>,
     alive: bool,
-    next_index: usize,
+    index: u64,
+    common: Common,
     data: T,
 }
 
-impl<T: Merge> NodeInner<T> {
-    pub fn root(data: T) -> Self {
+impl<T: NodeData> NodeInner<T> {
+    pub fn new(parent: Option<StrongHandle<T>>, common: Common, data: T) -> Self {
         Self {
-            parent: None,
+            parent,
             children: HashMap::new(),
             alive: true,
-            next_index: 0,
+            index: common.next_node_index(),
+            common,
             data,
         }
     }
 
-    fn add_child_with<U, F>(&mut self, f: F) -> U
-    where
-        F: FnOnce(usize) -> (ChildHandle<T>, U),
-    {
-        let child_index = self.next_index;
-        self.next_index += 1;
-        let (child_handle, return_data) = f(child_index);
-        let old = self.children.insert(child_index, child_handle);
-        assert!(old.is_none(), "child index duplicate");
-        return_data
+    pub fn data(&self) -> &T {
+        &self.data
+    }
+
+    pub fn parent(&self) -> Option<&StrongHandle<T>> {
+        self.parent.as_ref()
     }
 
     #[inline]
-    fn add_child(&mut self, child_handle: ChildHandle<T>) -> usize {
-        self.add_child_with(|child_index| (child_handle, child_index))
+    pub fn root(data: T) -> Self {
+        Self::new(None, Common::new(), data)
+    }
+
+    #[inline]
+    pub fn child(parent: StrongHandle<T>, common: Common, data: T) -> Self {
+        Self::new(Some(parent), common, data)
+    }
+
+    #[inline]
+    pub fn insert_child(&mut self, index: u64, handle: WeakHandle<T>) {
+        let old = self.children.insert(index, handle);
+        debug_assert!(old.is_none(), "index duplicate");
     }
 }

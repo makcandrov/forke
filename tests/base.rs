@@ -91,7 +91,7 @@ fn test_two_nodes1() {
     let (n1_content, n1_obs) = ContentDebug::new_with_obs();
 
     let root = Node::root(root_content);
-    let n1 = root.add_child(n1_content);
+    let n1 = root.fork(n1_content);
 
     drop(root);
     assert!(root_obs.dropped());
@@ -109,7 +109,7 @@ fn test_two_nodes2() {
     let (n1_content, n1_obs) = ContentDebug::new_with_obs();
 
     let root = Node::root(root_content);
-    let n1 = root.add_child(n1_content);
+    let n1 = root.fork(n1_content);
 
     drop(n1);
     assert!(n1_obs.dropped());
@@ -127,7 +127,7 @@ fn test_two_concurrent() {
     let (n1_content, n1_obs) = ContentDebug::new_with_obs();
 
     let root = Node::root(root_content);
-    let n1 = root.add_child(n1_content);
+    let n1 = root.fork(n1_content);
 
     let barrier = Barrier::new(2);
 
@@ -161,13 +161,13 @@ fn test_readme() {
     let (h_content, _h_obs) = ContentDebug::new_with_obs();
 
     let a = Node::root(a_content);
-    let b = a.add_child(b_content);
-    let _c = a.add_child(c_content);
-    let d = b.add_child(d_content);
-    let e = b.add_child(e_content);
-    let _f = e.add_child(f_content);
-    let _g = e.add_child(g_content);
-    let _h = e.add_child(h_content);
+    let b = a.fork(b_content);
+    let _c = a.fork(c_content);
+    let d = b.fork(d_content);
+    let e = b.fork(e_content);
+    let _f = e.fork(f_content);
+    let _g = e.fork(g_content);
+    let _h = e.fork(h_content);
 
     drop(b);
     drop(e);

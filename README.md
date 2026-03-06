@@ -1,12 +1,50 @@
 # forke
 
-`forke` is a thread-safe tree implementation where each node can store arbitrary, generic data.
+A thread-safe tree with automatic node merging.
 
-The core idea behind `forke` is that when a node is no longer needed, it is merged with its descendant or discarded if there are none. A node is considered useless if it has been dropped by the user and has no more than one child. When a merge happens, the associated data is combined using the `Merge` trait.
+When a node is dropped and has at most one child, it is removed from the tree
+and its data is folded into the remaining child (or simply discarded if it is a
+leaf). Data folding is defined by the [`Merge`] trait. The process cascades
+upward: if removing a node leaves its parent with a single child, the parent is
+merged too.
 
-## Example
+## Quick start
 
-Consider the following tree where red nodes are dropped by the user, and green nodes are still in use:
+```rust
+use forke::{Merge, Node};
+
+/// Per-node data: an append-only log of events.
+#[derive(Debug, Default)]
+struct Events(Vec<String>);
+
+impl Merge for Events {
+    fn merge(parent: &mut Self, child: Self) {
+        parent.0.extend(child.0);
+    }
+}
+
+// Build a tree
+let root = Node::root(Events::default());
+let child = root.fork(Events(vec!["created".into()]));
+let grandchild = child.fork(Events(vec!["init".into()]));
+
+// Read data through guards
+assert_eq!(grandchild.guard().data().0, vec!["init"]);
+
+// Search walks the path to the root
+let has_created = grandchild.search(|e| {
+    e.0.contains(&"created".to_string()).then_some(true)
+});
+assert_eq!(has_created, Some(true));
+
+// Dropping `child` merges its events into `grandchild`
+drop(child);
+```
+
+## How merging works
+
+Consider the following tree where red nodes have been dropped and green nodes
+are still alive:
 
 ```mermaid
 graph TD
@@ -25,9 +63,9 @@ graph TD
     class A,C,D,F,G,H green;
 ```
 
-Let’s assume the user drops node `D`. The following changes will occur in the tree:
+When the user drops node **D**, a cascade begins:
 
-1. **Node `D` is discarded:** The node D and its associated data are removed from the tree.
+**1.** Node D is a leaf -- it is discarded.
 
 ```mermaid
 graph TD
@@ -42,10 +80,10 @@ graph TD
     E-->H((H));
 
     class B,E red;
-    class A,C,D,F,G,H green;
+    class A,C,F,G,H green;
 ```
 
-2. **Node `B` is considered useless:** Since node `B` now only has one child (node `E`), it is considered useless and is removed. The data associated with node `B` is merged with node `E`'s data.
+**2.** Node B is now dead with a single child -- it is merged into E.
 
 ```mermaid
 graph TD
@@ -59,5 +97,71 @@ graph TD
     E-->H((H));
 
     class E red;
-    class A,C,D,F,G,H green;
+    class A,C,F,G,H green;
 ```
+
+Node A still has two children (C and B+E), so the cascade stops.
+
+## API overview
+
+### Tree construction
+
+| Method | Description |
+|---|---|
+| `Node::root(data)` | Create a root node |
+| `node.fork(data)` | Create a child node |
+| `node.fork_many(iter)` | Create multiple children at once |
+
+### Reading data
+
+| Method | Returns | Lock held until |
+|---|---|---|
+| `node.guard()` | `NodeGuard` | guard is dropped |
+| `node.owned_guard()` | `OwnedNodeGuard` | guard is dropped (independent of `Node`) |
+
+Both guard types expose `.data() -> &T` and `.parent()`.
+
+### Traversal (node to root)
+
+| Method | Yields | Use case |
+|---|---|---|
+| `node.traverse()` | `OwnedNodeGuard<T>` | Process each ancestor; locks released one by one |
+| `node.traverse_ref(&mut guards)` | `&T` | Borrow all ancestors simultaneously |
+| `node.search(f)` | `Option<U>` | Find the first matching ancestor |
+
+### The `Merge` trait
+
+Implement `Merge` to define how a child's data is folded into its parent when
+the child is removed:
+
+```rust
+pub trait Merge {
+    fn merge(parent: &mut Self, child: Self);
+}
+```
+
+Built-in implementations are provided for standard collections:
+
+| Type | Strategy |
+|---|---|
+| `Option<T: Merge>` | Merges inner values; `Some` wins over `None` |
+| `Vec<T>` | Extends |
+| `String` | Appends |
+| `HashMap<K, V: Merge>` | Merges values with matching keys; inserts new keys |
+| `BTreeMap<K, V: Merge>` | Same as `HashMap` |
+| `HashSet<T>` / `BTreeSet<T>` | Union |
+
+Enable the `hashbrown` feature for `hashbrown::HashMap` and `hashbrown::HashSet`
+support.
+
+## Thread safety
+
+All operations on `Node` are thread-safe. Nodes can be forked, dropped, read,
+and traversed concurrently from any thread. The drop/merge logic uses
+fine-grained locking with automatic retry: if a lock is contended during a merge
+cascade, the operation is deferred and retried later rather than blocking the
+caller.
+
+## License
+
+MIT OR Apache-2.0
