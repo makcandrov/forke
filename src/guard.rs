@@ -1,6 +1,6 @@
 use std::mem::transmute;
 
-use lock_notify::{MappedRwLockNotifyReadGuard, MappedRwLockNotifyWriteGuard};
+use lockbell::{MappedRwLockBellReadGuard, MappedRwLockBellWriteGuard};
 
 use crate::{
     NodeData,
@@ -12,7 +12,7 @@ use crate::{
 #[derive(Debug)]
 #[must_use = "if unused the lock is immediately released"]
 pub struct NodeGuard<'a, T: NodeData> {
-    guard: MappedRwLockNotifyReadGuard<'a, NodeInner<T>>,
+    guard: MappedRwLockBellReadGuard<'a, NodeInner<T>>,
 }
 
 /// An owned read-lock guard on a node. Unlike [`NodeGuard`], this is not
@@ -36,7 +36,7 @@ pub struct OwnedNodeGuard<T: NodeData> {
 #[derive(Debug)]
 #[must_use = "if unused the lock is immediately released"]
 pub struct NodeWriteGuard<'a, T: NodeData> {
-    guard: MappedRwLockNotifyWriteGuard<'a, T>,
+    guard: MappedRwLockBellWriteGuard<'a, T>,
 }
 
 /// An owned write-lock guard on a node. Unlike [`NodeWriteGuard`], this is not

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-lock-notify = { git = "https://github.com/makcandrov/lock-notify" }
+lockbell = { git = "https://github.com/makcandrov/lockbell" }
 hashbrown = "0.16"
 quick-impl = "0.2"
 

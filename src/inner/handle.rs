@@ -3,9 +3,9 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use lock_notify::{
-    MappedRwLockNotifyReadGuard, MappedRwLockNotifyWriteGuard, RwLockNotify, RwLockNotifyReadGuard,
-    RwLockNotifyWriteGuard,
+use lockbell::{
+    MappedRwLockBellReadGuard, MappedRwLockBellWriteGuard, RwLockBell, RwLockBellReadGuard,
+    RwLockBellWriteGuard,
 };
 
 use crate::{
@@ -17,13 +17,13 @@ use super::{Multiplicity, NodeInner};
 
 #[derive(Debug)]
 pub(crate) struct StrongHandle<T: NodeData> {
-    inner: Arc<RwLockNotify<Option<NodeInner<T>>>>,
+    inner: Arc<RwLockBell<Option<NodeInner<T>>>>,
     index: u64,
 }
 
 #[derive(Debug)]
 pub(crate) struct WeakHandle<T: NodeData> {
-    inner: Weak<RwLockNotify<Option<NodeInner<T>>>>,
+    inner: Weak<RwLockBell<Option<NodeInner<T>>>>,
     index: u64,
 }
 
@@ -58,7 +58,7 @@ impl<T: NodeData> StrongHandle<T> {
     fn new(node: NodeInner<T>) -> Self {
         Self {
             index: node.index,
-            inner: Arc::new(RwLockNotify::new(Some(node))),
+            inner: Arc::new(RwLockBell::new(Some(node))),
         }
     }
 
@@ -94,12 +94,12 @@ impl<T: NodeData> StrongHandle<T> {
         OwnedNodeWriteGuard::new(self)
     }
 
-    pub fn read_node<'a>(&'a self) -> MappedRwLockNotifyReadGuard<'a, NodeInner<T>> {
-        RwLockNotifyReadGuard::map(self.inner.read(), |inner| inner.as_ref().unwrap())
+    pub fn read_node<'a>(&'a self) -> MappedRwLockBellReadGuard<'a, NodeInner<T>> {
+        RwLockBellReadGuard::map(self.inner.read(), |inner| inner.as_ref().unwrap())
     }
 
-    pub fn write_data<'a>(&'a self) -> MappedRwLockNotifyWriteGuard<'a, T> {
-        RwLockNotifyWriteGuard::map(self.inner.write(), |inner| {
+    pub fn write_data<'a>(&'a self) -> MappedRwLockBellWriteGuard<'a, T> {
+        RwLockBellWriteGuard::map(self.inner.write(), |inner| {
             &mut inner.as_mut().unwrap().data
         })
     }
@@ -273,7 +273,7 @@ impl<T: NodeData> StrongHandle<T> {
                         };
 
                         let mut parent_guard =
-                            RwLockNotifyWriteGuard::map(parent_guard, |parent_opt| {
+                            RwLockBellWriteGuard::map(parent_guard, |parent_opt| {
                                 parent_opt
                                     .as_mut()
                                     .expect("parent must not be dropped as a child exists")
