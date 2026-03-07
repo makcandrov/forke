@@ -1,0 +1,8 @@
+[package]
+name = "forke-test-utils"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+forke.workspace = true
+parking_lot.workspace = true

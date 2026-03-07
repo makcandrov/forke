@@ -116,7 +116,6 @@ impl<K: Ord, V: Merge> Merge for BTreeMap<K, V> {
     }
 }
 
-#[cfg(feature = "hashbrown")]
 const _: () = {
     use hashbrown::{HashMap, HashSet, hash_map};
 
@@ -162,6 +161,118 @@ mod tests {
     use super::*;
 
     #[test]
+    fn merge_vec() {
+        let mut parent = vec![1, 2];
+        Merge::merge(&mut parent, vec![3, 4]);
+        assert_eq!(parent, vec![1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn merge_string() {
+        let mut parent = String::from("hello");
+        Merge::merge(&mut parent, " world".into());
+        assert_eq!(parent, "hello world");
+    }
+
+    #[test]
+    fn merge_option_both_some() {
+        let mut parent = Some(vec![1]);
+        Merge::merge(&mut parent, Some(vec![2]));
+        assert_eq!(parent, Some(vec![1, 2]));
+    }
+
+    #[test]
+    fn merge_option_parent_none() {
+        let mut parent: Option<Vec<i32>> = None;
+        Merge::merge(&mut parent, Some(vec![1]));
+        assert_eq!(parent, Some(vec![1]));
+    }
+
+    #[test]
+    fn merge_option_child_none() {
+        let mut parent = Some(vec![1]);
+        Merge::merge(&mut parent, None);
+        assert_eq!(parent, Some(vec![1]));
+    }
+
+    #[test]
+    fn merge_option_both_none() {
+        let mut parent: Option<Vec<i32>> = None;
+        Merge::merge(&mut parent, None);
+        assert_eq!(parent, None);
+    }
+
+    #[test]
+    fn merge_hashset() {
+        let mut parent: HashSet<i32> = [1, 2].into();
+        Merge::merge(&mut parent, [2, 3].into());
+        assert_eq!(parent, [1, 2, 3].into());
+    }
+
+    #[test]
+    fn merge_hashset_swap() {
+        let mut parent: HashSet<i32> = [1].into();
+        Merge::merge(&mut parent, [10, 20, 30].into());
+        assert_eq!(parent, [1, 10, 20, 30].into());
+    }
+
+    #[test]
+    fn merge_btreeset() {
+        let mut parent: BTreeSet<i32> = [1, 2].into();
+        Merge::merge(&mut parent, [2, 3].into());
+        assert_eq!(parent, [1, 2, 3].into());
+    }
+
+    #[test]
+    fn merge_btreeset_swap() {
+        let mut parent: BTreeSet<i32> = [1].into();
+        Merge::merge(&mut parent, [10, 20, 30].into());
+        assert_eq!(parent, [1, 10, 20, 30].into());
+    }
+
+    #[test]
+    fn merge_hashmap_normal() {
+        let mut parent: HashMap<i32, String> = HashMap::from([(1, "a".into()), (2, "b".into())]);
+        let child: HashMap<i32, String> = HashMap::from([(2, "c".into()), (3, "d".into())]);
+        Merge::merge(&mut parent, child);
+        assert_eq!(parent[&1], "a");
+        assert_eq!(parent[&2], "bc");
+        assert_eq!(parent[&3], "d");
+    }
+
+    #[test]
+    fn merge_hashmap_swap() {
+        let mut parent: HashMap<i32, String> = HashMap::from([(1, "a".into())]);
+        let child: HashMap<i32, String> =
+            HashMap::from([(1, "b".into()), (2, "c".into()), (3, "d".into())]);
+        Merge::merge(&mut parent, child);
+        assert_eq!(parent[&1], "ab");
+        assert_eq!(parent[&2], "c");
+        assert_eq!(parent[&3], "d");
+    }
+
+    #[test]
+    fn merge_btreemap_normal() {
+        let mut parent: BTreeMap<i32, String> = BTreeMap::from([(1, "a".into()), (2, "b".into())]);
+        let child: BTreeMap<i32, String> = BTreeMap::from([(2, "c".into()), (3, "d".into())]);
+        Merge::merge(&mut parent, child);
+        assert_eq!(parent[&1], "a");
+        assert_eq!(parent[&2], "bc");
+        assert_eq!(parent[&3], "d");
+    }
+
+    #[test]
+    fn merge_btreemap_swap() {
+        let mut parent: BTreeMap<i32, String> = BTreeMap::from([(1, "a".into())]);
+        let child: BTreeMap<i32, String> =
+            BTreeMap::from([(1, "b".into()), (2, "c".into()), (3, "d".into())]);
+        Merge::merge(&mut parent, child);
+        assert_eq!(parent[&1], "ab");
+        assert_eq!(parent[&2], "c");
+        assert_eq!(parent[&3], "d");
+    }
+
+    #[test]
     fn test_hashmap_merge() {
         let mut parent = HashMap::from([
             (5, "he".to_string()),
@@ -178,14 +289,38 @@ mod tests {
 
         Merge::merge(&mut parent, child);
 
-        let merge_expected = HashMap::from([
-            (5, "he".to_string()),
-            (6, "hel".to_string()),
-            (100, "hello world".to_string()),
-            (101, "hello world!".to_string()),
-            (500, "hello".to_string()),
+        {
+            let merge_expected = HashMap::from([
+                (5, "he".to_string()),
+                (6, "hel".to_string()),
+                (100, "hello world".to_string()),
+                (101, "hello world!".to_string()),
+                (500, "hello".to_string()),
+            ]);
+
+            assert_eq!(parent, merge_expected);
+        }
+
+        let child = HashMap::from([
+            (1, "hello w".to_string()),
+            (500, " wo".to_string()),
+            (501, "hello wor".to_string()),
         ]);
 
-        assert_eq!(parent, merge_expected);
+        Merge::merge(&mut parent, child);
+
+        {
+            let merge_expected = HashMap::from([
+                (1, "hello w".to_string()),
+                (5, "he".to_string()),
+                (6, "hel".to_string()),
+                (100, "hello world".to_string()),
+                (101, "hello world!".to_string()),
+                (500, "hello wo".to_string()),
+                (501, "hello wor".to_string()),
+            ]);
+
+            assert_eq!(parent, merge_expected);
+        }
     }
 }

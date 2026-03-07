@@ -1,15 +1,26 @@
-[package]
-name = "forke"
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
-lockbell = { git = "https://github.com/makcandrov/lockbell" }
+[workspace.dependencies]
+forke.path = "./"
+forke-test-utils.path = "./test-utils"
+
+lockbell = "0.1"
 hashbrown = "0.16"
 quick-impl = "0.2"
-
-[dev-dependencies]
 parking_lot = "0.12"
 
-[features]
-hashbrown = []
+[package]
+name = "forke"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+lockbell.workspace = true
+hashbrown.workspace = true
+quick-impl.workspace = true
+
+[dev-dependencies]
+forke-test-utils.workspace = true
+parking_lot.workspace = true
