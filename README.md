@@ -102,58 +102,6 @@ graph TD
 
 Node A still has two children (C and B+E), so the cascade stops.
 
-## API overview
-
-### Tree construction
-
-| Method | Description |
-|---|---|
-| `Node::root(data)` | Create a root node |
-| `node.fork(data)` | Create a child node |
-| `node.fork_many(iter)` | Create multiple children at once |
-
-### Reading data
-
-| Method | Returns | Lock held until |
-|---|---|---|
-| `node.guard()` | `NodeGuard` | guard is dropped |
-| `node.owned_guard()` | `OwnedNodeGuard` | guard is dropped (independent of `Node`) |
-
-Both guard types expose `.data() -> &T` and `.parent()`.
-
-### Traversal (node to root)
-
-| Method | Yields | Use case |
-|---|---|---|
-| `node.traverse()` | `OwnedNodeGuard<T>` | Process each ancestor; locks released one by one |
-| `node.traverse_ref(&mut guards)` | `&T` | Borrow all ancestors simultaneously |
-| `node.search(f)` | `Option<U>` | Find the first matching ancestor |
-
-### The `Merge` trait
-
-Implement `Merge` to define how a child's data is folded into its parent when
-the child is removed:
-
-```rust
-pub trait Merge {
-    fn merge(parent: &mut Self, child: Self);
-}
-```
-
-Built-in implementations are provided for standard collections:
-
-| Type | Strategy |
-|---|---|
-| `Option<T: Merge>` | Merges inner values; `Some` wins over `None` |
-| `Vec<T>` | Extends |
-| `String` | Appends |
-| `HashMap<K, V: Merge>` | Merges values with matching keys; inserts new keys |
-| `BTreeMap<K, V: Merge>` | Same as `HashMap` |
-| `HashSet<T>` / `BTreeSet<T>` | Union |
-
-Enable the `hashbrown` feature for `hashbrown::HashMap` and `hashbrown::HashSet`
-support.
-
 ## Thread safety
 
 All operations on `Node` are thread-safe. Nodes can be forked, dropped, read,

@@ -10,6 +10,7 @@ lockbell = "0.1"
 hashbrown = "0.16"
 quick-impl = "0.2"
 parking_lot = "0.12"
+rand = "0.10"
 
 [package]
 name = "forke"
@@ -24,3 +25,28 @@ quick-impl.workspace = true
 [dev-dependencies]
 forke-test-utils.workspace = true
 parking_lot.workspace = true
+rand.workspace = true
+
+[[test]]
+name = "memory-grow-and-shrink"
+path = "tests/memory/grow_and_shrink.rs"
+
+[[test]]
+name = "memory-sliding-chain"
+path = "tests/memory/sliding_chain.rs"
+
+[[test]]
+name = "memory-large-linear-chain"
+path = "tests/memory/large_linear_chain.rs"
+
+[[test]]
+name = "memory-large-star"
+path = "tests/memory/large_star.rs"
+
+[[test]]
+name = "memory-concurrent"
+path = "tests/memory/concurrent.rs"
+
+[[test]]
+name = "memory-fork-many"
+path = "tests/memory/fork_many.rs"

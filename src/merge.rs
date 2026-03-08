@@ -1,6 +1,7 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet, btree_map, hash_map},
-    hash::{BuildHasher, Hash},
+    collections::{BinaryHeap, LinkedList},
+    ffi::OsString,
+    marker::PhantomData,
     mem::replace,
 };
 
@@ -26,16 +27,194 @@ impl<T: Merge> MergeInv for T {
     }
 }
 
-impl<T> Merge for Option<T>
-where
-    T: Merge,
-{
+impl Merge for () {
+    fn merge(_parent: &mut Self, _child: Self) {}
+}
+
+impl<T> Merge for PhantomData<T> {
+    fn merge(_parent: &mut Self, _child: Self) {}
+}
+
+impl<T: Merge> Merge for Box<T> {
+    #[inline]
+    fn merge(parent: &mut Self, child: Self) {
+        Merge::merge(parent.as_mut(), *child);
+    }
+}
+
+impl<T: Merge> Merge for Option<T> {
     fn merge(parent: &mut Self, child: Self) {
         match (parent, child) {
             (_, None) => {}
             (parent @ None, child) => *parent = child,
             (Some(parent), Some(child)) => Merge::merge(parent, child),
         }
+    }
+}
+
+impl<T: Merge, const N: usize> Merge for [T; N] {
+    fn merge(parent: &mut Self, child: Self) {
+        for (p, c) in parent.iter_mut().zip(child) {
+            Merge::merge(p, c);
+        }
+    }
+}
+
+macro_rules! impl_merge_tuple_indexed {
+    ($(($T:ident, $idx:tt)),+) => {
+        impl<$($T: Merge),+> Merge for ($($T,)+) {
+            fn merge(parent: &mut Self, child: Self) {
+                $(Merge::merge(&mut parent.$idx, child.$idx);)+
+            }
+        }
+    };
+}
+
+impl_merge_tuple_indexed!((A, 0));
+impl_merge_tuple_indexed!((A, 0), (B, 1));
+impl_merge_tuple_indexed!((A, 0), (B, 1), (C, 2));
+impl_merge_tuple_indexed!((A, 0), (B, 1), (C, 2), (D, 3));
+impl_merge_tuple_indexed!((A, 0), (B, 1), (C, 2), (D, 3), (E, 4));
+impl_merge_tuple_indexed!((A, 0), (B, 1), (C, 2), (D, 3), (E, 4), (F, 5));
+impl_merge_tuple_indexed!((A, 0), (B, 1), (C, 2), (D, 3), (E, 4), (F, 5), (G, 6));
+impl_merge_tuple_indexed!(
+    (A, 0),
+    (B, 1),
+    (C, 2),
+    (D, 3),
+    (E, 4),
+    (F, 5),
+    (G, 6),
+    (H, 7)
+);
+impl_merge_tuple_indexed!(
+    (A, 0),
+    (B, 1),
+    (C, 2),
+    (D, 3),
+    (E, 4),
+    (F, 5),
+    (G, 6),
+    (H, 7),
+    (I, 8)
+);
+impl_merge_tuple_indexed!(
+    (A, 0),
+    (B, 1),
+    (C, 2),
+    (D, 3),
+    (E, 4),
+    (F, 5),
+    (G, 6),
+    (H, 7),
+    (I, 8),
+    (J, 9)
+);
+impl_merge_tuple_indexed!(
+    (A, 0),
+    (B, 1),
+    (C, 2),
+    (D, 3),
+    (E, 4),
+    (F, 5),
+    (G, 6),
+    (H, 7),
+    (I, 8),
+    (J, 9),
+    (K, 10)
+);
+impl_merge_tuple_indexed!(
+    (A, 0),
+    (B, 1),
+    (C, 2),
+    (D, 3),
+    (E, 4),
+    (F, 5),
+    (G, 6),
+    (H, 7),
+    (I, 8),
+    (J, 9),
+    (K, 10),
+    (L, 11)
+);
+impl_merge_tuple_indexed!(
+    (A, 0),
+    (B, 1),
+    (C, 2),
+    (D, 3),
+    (E, 4),
+    (F, 5),
+    (G, 6),
+    (H, 7),
+    (I, 8),
+    (J, 9),
+    (K, 10),
+    (L, 11),
+    (M, 12)
+);
+impl_merge_tuple_indexed!(
+    (A, 0),
+    (B, 1),
+    (C, 2),
+    (D, 3),
+    (E, 4),
+    (F, 5),
+    (G, 6),
+    (H, 7),
+    (I, 8),
+    (J, 9),
+    (K, 10),
+    (L, 11),
+    (M, 12),
+    (N, 13)
+);
+impl_merge_tuple_indexed!(
+    (A, 0),
+    (B, 1),
+    (C, 2),
+    (D, 3),
+    (E, 4),
+    (F, 5),
+    (G, 6),
+    (H, 7),
+    (I, 8),
+    (J, 9),
+    (K, 10),
+    (L, 11),
+    (M, 12),
+    (N, 13),
+    (O, 14)
+);
+impl_merge_tuple_indexed!(
+    (A, 0),
+    (B, 1),
+    (C, 2),
+    (D, 3),
+    (E, 4),
+    (F, 5),
+    (G, 6),
+    (H, 7),
+    (I, 8),
+    (J, 9),
+    (K, 10),
+    (L, 11),
+    (M, 12),
+    (N, 13),
+    (O, 14),
+    (P, 15)
+);
+
+impl Merge for String {
+    #[inline]
+    fn merge(parent: &mut Self, child: Self) {
+        parent.push_str(&child);
+    }
+}
+
+impl Merge for OsString {
+    #[inline]
+    fn merge(parent: &mut Self, child: Self) {
+        parent.push(child);
     }
 }
 
@@ -46,78 +225,99 @@ impl<T> Merge for Vec<T> {
     }
 }
 
-impl Merge for String {
+impl<T> Merge for LinkedList<T> {
     #[inline]
+    fn merge(parent: &mut Self, mut child: Self) {
+        parent.append(&mut child);
+    }
+}
+
+impl<T: Ord> Merge for BinaryHeap<T> {
     fn merge(parent: &mut Self, child: Self) {
-        parent.push_str(&child);
-    }
-}
-
-impl<T, S> Merge for HashSet<T, S>
-where
-    T: Eq + Hash,
-    S: BuildHasher,
-{
-    fn merge(parent: &mut Self, mut child: Self) {
         if parent.len() < child.len() {
-            child = replace(parent, child);
-        }
-        parent.extend(child);
-    }
-}
-
-impl<T: Ord> Merge for BTreeSet<T> {
-    fn merge(parent: &mut Self, mut child: Self) {
-        if parent.len() < child.len() {
-            child = replace(parent, child);
-        }
-        parent.extend(child);
-    }
-}
-
-impl<K, V, S> Merge for HashMap<K, V, S>
-where
-    K: Eq + Hash,
-    V: Merge,
-    S: BuildHasher,
-{
-    fn merge(parent: &mut Self, mut child: Self) {
-        let merge = if parent.len() < child.len() {
-            child = replace(parent, child);
-            <V as MergeInv>::merge_inv
+            let parent_items = replace(parent, child);
+            parent.extend(parent_items);
         } else {
-            <V as Merge>::merge
-        };
-
-        for (k, v) in child {
-            match parent.entry(k) {
-                hash_map::Entry::Occupied(e) => merge(e.into_mut(), v),
-                hash_map::Entry::Vacant(e) => drop(e.insert(v)),
-            }
-        }
-    }
-}
-
-impl<K: Ord, V: Merge> Merge for BTreeMap<K, V> {
-    fn merge(parent: &mut Self, mut child: Self) {
-        let merge = if parent.len() < child.len() {
-            child = replace(parent, child);
-            <V as MergeInv>::merge_inv
-        } else {
-            <V as Merge>::merge
-        };
-
-        for (k, v) in child {
-            match parent.entry(k) {
-                btree_map::Entry::Occupied(e) => merge(e.into_mut(), v),
-                btree_map::Entry::Vacant(e) => drop(e.insert(v)),
-            }
+            parent.extend(child);
         }
     }
 }
 
 const _: () = {
+    use std::collections::{BTreeMap, BTreeSet, btree_map};
+
+    impl<K: Ord, V: Merge> Merge for BTreeMap<K, V> {
+        fn merge(parent: &mut Self, mut child: Self) {
+            let merge = if parent.len() < child.len() {
+                child = replace(parent, child);
+                <V as MergeInv>::merge_inv
+            } else {
+                <V as Merge>::merge
+            };
+
+            for (k, v) in child {
+                match parent.entry(k) {
+                    btree_map::Entry::Occupied(e) => merge(e.into_mut(), v),
+                    btree_map::Entry::Vacant(e) => drop(e.insert(v)),
+                }
+            }
+        }
+    }
+
+    impl<T: Ord> Merge for BTreeSet<T> {
+        fn merge(parent: &mut Self, mut child: Self) {
+            if parent.len() < child.len() {
+                child = replace(parent, child);
+            }
+            parent.extend(child);
+        }
+    }
+};
+
+const _: () = {
+    use std::collections::{HashMap, HashSet, hash_map};
+    use std::hash::{BuildHasher, Hash};
+
+    impl<K, V, S> Merge for HashMap<K, V, S>
+    where
+        K: Eq + Hash,
+        V: Merge,
+        S: BuildHasher,
+    {
+        fn merge(parent: &mut Self, mut child: Self) {
+            let merge = if parent.len() < child.len() {
+                child = replace(parent, child);
+                <V as MergeInv>::merge_inv
+            } else {
+                <V as Merge>::merge
+            };
+
+            for (k, v) in child {
+                match parent.entry(k) {
+                    hash_map::Entry::Occupied(e) => merge(e.into_mut(), v),
+                    hash_map::Entry::Vacant(e) => drop(e.insert(v)),
+                }
+            }
+        }
+    }
+
+    impl<T, S> Merge for HashSet<T, S>
+    where
+        T: Eq + Hash,
+        S: BuildHasher,
+    {
+        fn merge(parent: &mut Self, mut child: Self) {
+            if parent.len() < child.len() {
+                child = replace(parent, child);
+            }
+            parent.extend(child);
+        }
+    }
+};
+
+const _: () = {
     use hashbrown::{HashMap, HashSet, hash_map};
+    use std::hash::{BuildHasher, Hash};
 
     impl<T, S> Merge for HashSet<T, S>
     where
@@ -159,6 +359,7 @@ const _: () = {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
     #[test]
     fn merge_vec() {

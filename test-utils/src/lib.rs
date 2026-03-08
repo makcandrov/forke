@@ -1,10 +1,57 @@
+use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, AtomicU64, Ordering::Relaxed},
+    atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering::Relaxed},
 };
 
 use forke::Merge;
 use parking_lot::RwLock;
+
+#[derive(Debug, Default)]
+pub struct TrackingAllocator {
+    inner: System,
+    allocated: AtomicUsize,
+}
+
+impl TrackingAllocator {
+    pub const fn new() -> Self {
+        Self {
+            inner: System,
+            allocated: AtomicUsize::new(0),
+        }
+    }
+
+    pub fn allocated(&self) -> usize {
+        self.allocated.load(Relaxed)
+    }
+}
+
+unsafe impl GlobalAlloc for TrackingAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let ptr = unsafe { self.inner.alloc(layout) };
+        if !ptr.is_null() {
+            self.allocated.fetch_add(layout.size(), Relaxed);
+        }
+        ptr
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        unsafe { self.inner.dealloc(ptr, layout) };
+        self.allocated.fetch_sub(layout.size(), Relaxed);
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        let new_ptr = unsafe { self.inner.realloc(ptr, layout, new_size) };
+        if !new_ptr.is_null() {
+            if new_size > layout.size() {
+                self.allocated.fetch_add(new_size - layout.size(), Relaxed);
+            } else {
+                self.allocated.fetch_sub(layout.size() - new_size, Relaxed);
+            }
+        }
+        new_ptr
+    }
+}
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
