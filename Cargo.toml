@@ -1,6 +1,10 @@
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"
+repository = "https://github.com/makcandrov/lockbell"
+homepage = "https://github.com/makcandrov/lockbell"
+license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 forke.path = "./"
@@ -16,6 +20,13 @@ rand = "0.10"
 name = "forke"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+description = "A thread-safe tree with automatic node merging."
+keywords = ["tree", "concurrency", "data-structure", "thread-safe", "fork"]
+categories = ["concurrency", "data-structures"]
 
 [dependencies]
 lockbell.workspace = true
