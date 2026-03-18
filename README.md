@@ -46,59 +46,23 @@ drop(child);
 Consider the following tree where red nodes have been dropped and green nodes
 are still alive:
 
-```mermaid
-graph TD
-    classDef red fill:#ff0000,stroke:#ff0000,color:#dfdfdf;
-    classDef green fill:#00ff00,stroke:#00ff00,color:#202020;
-
-    A((A))-->B((B));
-    A-->C((C));
-    B-->D((D));
-    B-->E((E));
-    E-->F((F));
-    E-->G((G));
-    E-->H((H));
-
-    class B,E red;
-    class A,C,D,F,G,H green;
-```
+<div align="center">
+  <img src="https://raw.githubusercontent.com/makcandrov/forke/main/assets/graph0.png" width="400" />
+</div>
 
 When the user drops node **D**, a cascade begins:
 
 **1.** Node D is a leaf -- it is discarded.
 
-```mermaid
-graph TD
-    classDef red fill:#ff0000,stroke:#ff0000,color:#dfdfdf;
-    classDef green fill:#00ff00,stroke:#00ff00,color:#202020;
-
-    A((A))-->B((B));
-    A-->C((C));
-    B-->E((E));
-    E-->F((F));
-    E-->G((G));
-    E-->H((H));
-
-    class B,E red;
-    class A,C,F,G,H green;
-```
+<div align="center">
+  <img src="https://raw.githubusercontent.com/makcandrov/forke/main/assets/graph1.png" width="400" />
+</div>
 
 **2.** Node B is now dead with a single child -- it is merged into E.
 
-```mermaid
-graph TD
-    classDef red fill:#ff0000,stroke:#ff0000,color:#dfdfdf;
-    classDef green fill:#00ff00,stroke:#00ff00,color:#202020;
-
-    A((A))-->E((B+E));
-    A-->C((C));
-    E-->F((F));
-    E-->G((G));
-    E-->H((H));
-
-    class E red;
-    class A,C,F,G,H green;
-```
+<div align="center">
+  <img src="https://raw.githubusercontent.com/makcandrov/forke/main/assets/graph2.png" width="400" />
+</div>
 
 Node A still has two children (C and B+E), so the cascade stops.
 
