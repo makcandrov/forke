@@ -95,10 +95,14 @@ impl<T: NodeData> StrongHandle<T> {
     }
 
     pub fn read_node<'a>(&'a self) -> MappedRwLockBellReadGuard<'a, NodeInner<T>> {
+        // SAFETY: `inner` is only set to `None` when `try_drop` removes a dead node from
+        // the tree. A node can only be removed if it has no external handles pointing to it.
+        // Since we hold a `StrongHandle`, this node cannot be removed, so `inner` is always `Some`.
         RwLockBellReadGuard::map(self.inner.read(), |inner| inner.as_ref().unwrap())
     }
 
     pub fn write_data<'a>(&'a self) -> MappedRwLockBellWriteGuard<'a, T> {
+        // SAFETY: see `read_node` — `inner` is always `Some` while a `StrongHandle` exists.
         RwLockBellWriteGuard::map(self.inner.write(), |inner| {
             &mut inner.as_mut().unwrap().data
         })
@@ -107,6 +111,7 @@ impl<T: NodeData> StrongHandle<T> {
     #[inline]
     fn write_node<U>(&self, f: impl FnOnce(&mut NodeInner<T>) -> U) -> U {
         let mut node_guard = self.inner.write();
+        // SAFETY: see `read_node` — `inner` is always `Some` while a `StrongHandle` exists.
         f(node_guard.as_mut().unwrap())
     }
 
@@ -120,6 +125,14 @@ impl<T: NodeData> StrongHandle<T> {
         let mut node_guard = self.inner.write();
         data.into_iter()
             .map(move |data| self.add_child(node_guard.as_mut().unwrap(), data))
+    }
+
+    #[inline]
+    pub fn create_children_array<const N: usize>(&self, data: [T; N]) -> [Self; N] {
+        let mut node_guard = self.inner.write();
+        let node = node_guard.as_mut().unwrap();
+        let mut data_iter = data.into_iter();
+        std::array::from_fn(|_| self.add_child(node, data_iter.next().unwrap()))
     }
 
     fn add_child(&self, node: &mut NodeInner<T>, data: T) -> StrongHandle<T> {

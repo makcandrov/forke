@@ -79,15 +79,14 @@ impl<'a, T: NodeData> Iterator for TraverseRefIter<'a, T> {
 
         self.current = static_guard.parent_handle().cloned();
         self.storage.guards.push(static_guard);
-        let staic_guard = self.storage.guards.last().unwrap();
 
         // SAFETY: `data` points into the Arc heap allocation, which is at a
-        // stable address independent of Vec layout. The guard keeping the Arc
-        // alive was just pushed into `self.storage`, which is mutably borrowed
+        // stable address independent of Vec layout. The guard we just pushed
+        // into `self.storage` keeps the Arc alive, which is mutably borrowed
         // for 'a. The borrow checker prevents any code from removing guards
         // from `storage` while any &'a T derived from this call is alive,
         // so the data remains valid for 'a.
-        let data: *const T = staic_guard.data();
+        let data: *const T = self.storage.guards.last().unwrap().data();
         Some(unsafe { &*data })
     }
 }

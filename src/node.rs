@@ -29,6 +29,15 @@ impl<T: NodeData> Node<T> {
     }
 
     /// Forks this node, creating a child with the given data.
+    ///
+    /// # Example
+    /// ```
+    /// use forke::Node;
+    ///
+    /// let parent = Node::root(vec![1]);
+    /// let child = parent.fork(vec![2]);
+    /// assert_eq!(*child.guard().data(), vec![2]);
+    /// ```
     #[inline]
     #[must_use]
     pub fn fork(&self, data: T) -> Self {
@@ -47,7 +56,38 @@ impl<T: NodeData> Node<T> {
             .collect()
     }
 
+    /// Forks this node N times, creating an array of N child nodes.
+    ///
+    /// # Example
+    /// ```
+    /// use forke::Node;
+    ///
+    /// let parent = Node::root(vec![0]);
+    /// let [child1, child2, child3] = parent.fork_n([vec![1], vec![2], vec![3]]);
+    /// assert_eq!(*child1.guard().data(), vec![1]);
+    /// assert_eq!(*child2.guard().data(), vec![2]);
+    /// assert_eq!(*child3.guard().data(), vec![3]);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn fork_n<const N: usize>(&self, data: [T; N]) -> [Self; N] {
+        let handles = self.handle.create_children_array(data);
+        handles.map(|handle| Self { handle })
+    }
+
     /// Acquires a read lock on this node, borrowing `self`.
+    ///
+    /// Returns a guard that provides read access to the node's data via [`NodeGuard::data`].
+    /// The lock is held as long as the guard exists.
+    ///
+    /// # Example
+    /// ```
+    /// # use forke::{Node, Merge};
+    /// let root = Node::root(vec![1, 2, 3]);
+    /// let guard = root.guard();
+    /// assert_eq!(guard.data(), &vec![1, 2, 3]);
+    /// // lock released when guard is dropped
+    /// ```
     #[inline]
     pub fn guard(&self) -> NodeGuard<'_, T> {
         self.handle.node_guard()
@@ -93,7 +133,20 @@ impl<T: NodeData> Node<T> {
     }
 
     /// Walks from this node up to the root, returning the first non-`None`
-    /// value produced by `f`.
+    /// value produced by the closure `f`.
+    ///
+    /// This is useful for searching for a condition in the ancestor chain.
+    /// Each node is visited once, starting from this node and continuing up to the root.
+    ///
+    /// # Example
+    /// ```
+    /// use forke::Node;
+    ///
+    /// let root = Node::root(vec![1, 2]);
+    /// let child = root.fork(vec![3]);
+    /// let found = child.search(|v| (v.len() == 2).then_some("parent length"));
+    /// assert_eq!(found, Some("parent length"));
+    /// ```
     #[inline]
     #[must_use]
     pub fn search<U, F>(&self, f: F) -> Option<U>

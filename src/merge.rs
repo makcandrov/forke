@@ -12,8 +12,21 @@ pub trait Merge {
     fn merge(parent: &mut Self, child: Self);
 }
 
-/// Inverse merge direction — folds a parent's data into its child. This is
-/// auto-implemented for all [`Merge`] types by swapping then merging.
+/// Inverse merge direction — folds a parent's data into its child.
+///
+/// This trait is automatically implemented for all [`Merge`] types by swapping
+/// the operands and calling [`Merge::merge`]. This is used internally when a
+/// parent node with a single child is merged up the tree: the parent's data is
+/// merged into the child (rather than the typical child-into-parent).
+///
+/// # Example
+/// ```
+/// # use forke::MergeInv;
+/// let mut child = vec![3, 4];
+/// let parent = vec![1, 2];
+/// <Vec<_> as MergeInv>::merge_inv(&mut child, parent);
+/// assert_eq!(child, vec![1, 2, 3, 4]);
+/// ```
 pub trait MergeInv: Merge {
     /// Merges `parent` into `child`.
     fn merge_inv(child: &mut Self, parent: Self);
