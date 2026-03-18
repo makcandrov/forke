@@ -48,8 +48,8 @@ are still alive:
 
 ```mermaid
 graph TD
-    classDef red fill:#ff0000,stroke:#ff0000,color:#ffffff;
-    classDef green fill:#00ff00,stroke:#00ff00,color:#000000;
+    classDef red fill:#ff0000,stroke:#ff0000,color:#dfdfdf;
+    classDef green fill:#00ff00,stroke:#00ff00,color:#202020;
 
     A((A))-->B((B));
     A-->C((C));
@@ -69,8 +69,8 @@ When the user drops node **D**, a cascade begins:
 
 ```mermaid
 graph TD
-    classDef red fill:#ff0000,stroke:#ff0000,color:#ffffff;
-    classDef green fill:#00ff00,stroke:#00ff00,color:#000000;
+    classDef red fill:#ff0000,stroke:#ff0000,color:#dfdfdf;
+    classDef green fill:#00ff00,stroke:#00ff00,color:#202020;
 
     A((A))-->B((B));
     A-->C((C));
@@ -87,8 +87,8 @@ graph TD
 
 ```mermaid
 graph TD
-    classDef red fill:#ff0000,stroke:#ff0000,color:#ffffff;
-    classDef green fill:#00ff00,stroke:#00ff00,color:#000000;
+    classDef red fill:#ff0000,stroke:#ff0000,color:#dfdfdf;
+    classDef green fill:#00ff00,stroke:#00ff00,color:#202020;
 
     A((A))-->E((B+E));
     A-->C((C));
