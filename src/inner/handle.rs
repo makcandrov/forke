@@ -82,7 +82,7 @@ impl<T: NodeData> StrongHandle<T> {
         NodeGuard::new(self)
     }
 
-    pub fn static_node_guard(self) -> OwnedNodeGuard<T> {
+    pub fn owned_node_guard(self) -> OwnedNodeGuard<T> {
         OwnedNodeGuard::new(self)
     }
 
@@ -90,7 +90,7 @@ impl<T: NodeData> StrongHandle<T> {
         NodeWriteGuard::new(self)
     }
 
-    pub fn static_node_write_guard(self) -> OwnedNodeWriteGuard<T> {
+    pub fn owned_node_write_guard(self) -> OwnedNodeWriteGuard<T> {
         OwnedNodeWriteGuard::new(self)
     }
 

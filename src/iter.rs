@@ -22,7 +22,7 @@ impl<T: NodeData> Iterator for TraverseIter<T> {
     #[inline]
     fn next(&mut self) -> Option<OwnedNodeGuard<T>> {
         let handle = self.current.take()?;
-        let guard = handle.static_node_guard();
+        let guard = handle.owned_node_guard();
         self.current = guard.parent_handle().cloned();
         Some(guard)
     }
@@ -75,7 +75,7 @@ impl<'a, T: NodeData> Iterator for TraverseRefIter<'a, T> {
 
     fn next(&mut self) -> Option<&'a T> {
         let handle = self.current.take()?;
-        let static_guard = handle.static_node_guard();
+        let static_guard = handle.owned_node_guard();
 
         self.current = static_guard.parent_handle().cloned();
         self.storage.guards.push(static_guard);

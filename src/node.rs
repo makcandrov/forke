@@ -98,7 +98,7 @@ impl<T: NodeData> Node<T> {
     /// the `Node` handle.
     #[inline]
     pub fn owned_guard(&self) -> OwnedNodeGuard<T> {
-        self.handle.clone().static_node_guard()
+        self.handle.clone().owned_node_guard()
     }
 
     /// Acquires a write lock on this node, borrowing `self`.
@@ -113,7 +113,7 @@ impl<T: NodeData> Node<T> {
     /// the `Node` handle.
     #[inline]
     pub fn owned_guard_mut(&self) -> OwnedNodeWriteGuard<T> {
-        self.handle.clone().static_node_write_guard()
+        self.handle.clone().owned_node_write_guard()
     }
 
     /// Returns an iterator that walks from this node up to the root,
