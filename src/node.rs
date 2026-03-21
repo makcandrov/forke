@@ -48,12 +48,10 @@ impl<T: NodeData> Node<T> {
 
     /// Forks this node multiple times, returning handles to all children.
     #[inline]
-    #[must_use]
-    pub fn fork_many(&self, data: impl IntoIterator<Item = T>) -> Vec<Self> {
+    pub fn fork_many(&self, data: impl IntoIterator<Item = T>) -> impl Iterator<Item = Self> {
         self.handle
             .create_children(data)
             .map(|handle| Self { handle })
-            .collect()
     }
 
     /// Forks this node N times, creating an array of N child nodes.

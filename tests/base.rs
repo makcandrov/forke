@@ -61,11 +61,30 @@ fn fork_single_child() {
 #[test]
 fn fork_many() {
     let root = Node::root(String::new());
-    let children = root.fork_many(vec!["a".into(), "b".into(), "c".into()]);
+    let children: Vec<_> = root
+        .fork_many(vec!["a".into(), "b".into(), "c".into()])
+        .collect();
     assert_eq!(children.len(), 3);
     assert_eq!(*children[0].guard().data(), "a");
     assert_eq!(*children[1].guard().data(), "b");
     assert_eq!(*children[2].guard().data(), "c");
+
+    assert!(children[0].guard().parent().is_some());
+    assert!(children[1].guard().parent().is_some());
+    assert!(children[2].guard().parent().is_some());
+}
+
+#[test]
+fn fork_n() {
+    let root = Node::root(String::new());
+    let [child0, child1, child2] = root.fork_n(["a".into(), "b".into(), "c".into()]);
+    assert_eq!(child0.guard().data(), "a");
+    assert_eq!(child1.guard().data(), "b");
+    assert_eq!(child2.guard().data(), "c");
+
+    assert!(child0.guard().parent().is_some());
+    assert!(child1.guard().parent().is_some());
+    assert!(child2.guard().parent().is_some());
 }
 
 #[test]
