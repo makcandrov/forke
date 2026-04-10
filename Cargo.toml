@@ -11,7 +11,7 @@ forke.path = "./"
 forke-test-utils.path = "./test-utils"
 
 lockbell = "0.1"
-hashbrown = "0.16"
+hashbrown = "0.17"
 quick-impl = "0.2"
 parking_lot = "0.12"
 rand = "0.10"
