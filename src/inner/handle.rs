@@ -95,14 +95,23 @@ impl<T: NodeData> StrongHandle<T> {
     }
 
     pub fn read_node<'a>(&'a self) -> MappedRwLockBellReadGuard<'a, NodeInner<T>> {
-        // SAFETY: `inner` is only set to `None` when `try_drop` removes a dead node from
-        // the tree. A node can only be removed if it has no external handles pointing to it.
-        // Since we hold a `StrongHandle`, this node cannot be removed, so `inner` is always `Some`.
+        // `inner` is only set to `None` inside `try_drop`'s `Multiplicity::Single`
+        // branch, which requires write locks on both the node and its child. To
+        // reach that branch the node's `alive` flag must be `false`, which only
+        // flips when the user-facing `Node<T>` is dropped.
+        //
+        // This function (and the others below) is only reached via the public
+        // guard constructors, which require a live `Node<T>` borrow — meaning
+        // `alive = true` and `inner` is still `Some`. The other places a
+        // `StrongHandle` can live (retry-callback closures inside `try_drop`
+        // itself) only ever call `try_drop`, which handles `None` explicitly.
+        //
+        // The unwrap is therefore unreachable from any safe API path.
         RwLockBellReadGuard::map(self.inner.read(), |inner| inner.as_ref().unwrap())
     }
 
     pub fn write_data<'a>(&'a self) -> MappedRwLockBellWriteGuard<'a, T> {
-        // SAFETY: see `read_node` — `inner` is always `Some` while a `StrongHandle` exists.
+        // See `read_node` for the soundness argument.
         RwLockBellWriteGuard::map(self.inner.write(), |inner| {
             &mut inner.as_mut().unwrap().data
         })
@@ -111,7 +120,7 @@ impl<T: NodeData> StrongHandle<T> {
     #[inline]
     fn write_node<U>(&self, f: impl FnOnce(&mut NodeInner<T>) -> U) -> U {
         let mut node_guard = self.inner.write();
-        // SAFETY: see `read_node` — `inner` is always `Some` while a `StrongHandle` exists.
+        // See `read_node` for the soundness argument.
         f(node_guard.as_mut().unwrap())
     }
 
@@ -190,22 +199,28 @@ impl<T: NodeData> StrongHandle<T> {
                 return;
             };
 
-            let Some(node) = node_opt_guard.as_ref() else {
+            let Some(node) = node_opt_guard.as_mut() else {
                 // The node has already been merged away by a concurrent retry.
                 return;
             };
 
             let node_index = node.index;
 
+            // If this is the originator's drop, mark the node dead while we
+            // hold the write lock. Doing this before the match means that
+            // even if we have to bail later (e.g. fail to lock a child or
+            // parent), a future cascade arriving from another direction can
+            // still pass through us instead of seeing `alive = true` and
+            // stopping prematurely.
+            if self_drop {
+                node.alive = false;
+            }
+
             match Multiplicity::from_iter(&node.children) {
                 Multiplicity::None => {
                     // No children, the node is a leaf that can be removed from the tree.
 
-                    let node = node_opt_guard.as_mut().unwrap();
-
-                    if self_drop {
-                        node.alive = false;
-                    } else if node.alive {
+                    if !self_drop && node.alive {
                         // Cascade reached a live node. Stop.
                         break;
                     }
@@ -241,12 +256,8 @@ impl<T: NodeData> StrongHandle<T> {
                     break;
                 }
                 Multiplicity::Multiple => {
-                    // Two children or more, the node must not be dropped.
-
-                    let node = node_opt_guard.as_mut().unwrap();
-                    if self_drop {
-                        node.alive = false;
-                    }
+                    // Two children or more, the node must not be dropped. The
+                    // `alive` flag was already set above if `self_drop`.
                     break;
                 }
                 Multiplicity::Single((child_index, child_weak_handle)) => {
