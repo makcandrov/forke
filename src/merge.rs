@@ -7,6 +7,15 @@ use std::{
 
 /// Defines how a child node's data is folded into its parent when the child
 /// is removed from the tree.
+///
+/// # Panic safety
+///
+/// Implementations **should not panic**. A panic during a merge can leave the
+/// affected node's data partially consumed (the child's old value is lost),
+/// and because the cascade may be running inside a queued callback, the
+/// panic may surface on a thread that didn't initiate the drop. Prefer
+/// fallible operations that produce `Result` and store errors in the data
+/// rather than panicking.
 pub trait Merge {
     /// Merges `child` into `parent`.
     fn merge(parent: &mut Self, child: Self);
@@ -15,9 +24,9 @@ pub trait Merge {
 /// Inverse merge direction — folds a parent's data into its child.
 ///
 /// This trait is automatically implemented for all [`Merge`] types by swapping
-/// the operands and calling [`Merge::merge`]. This is used internally when a
-/// parent node with a single child is merged up the tree: the parent's data is
-/// merged into the child (rather than the typical child-into-parent).
+/// the operands and calling [`Merge::merge`]. It is used internally when a
+/// parent node with a single child is merged down the tree: the parent's
+/// data is merged into the child (rather than the typical child-into-parent).
 ///
 /// # Example
 /// ```
@@ -33,7 +42,7 @@ pub trait MergeInv: Merge {
 }
 
 impl<T: Merge> MergeInv for T {
-    #[inline(always)]
+    #[inline]
     fn merge_inv(child: &mut Self, mut parent: Self) {
         parent = replace(child, parent);
         Merge::merge(child, parent);

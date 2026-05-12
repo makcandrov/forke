@@ -77,16 +77,20 @@ impl<'a, T: NodeData> NodeGuard<'a, T> {
     /// Walks from this node up to the root, returning the first non-`None`
     /// value produced by `f`.
     #[must_use]
-    pub fn recursive_search<U, F>(&self, f: F) -> Option<U>
+    pub fn search<U, F>(&self, f: F) -> Option<U>
     where
         F: Fn(&T) -> Option<U>,
     {
         if let Some(res) = f(self.data()) {
-            Some(res)
-        } else if let Some(parent) = self.parent() {
-            parent.recursive_search(f)
-        } else {
-            None
+            return Some(res);
+        }
+
+        let mut current = OwnedNodeGuard::new(self.parent_handle()?.clone());
+        loop {
+            if let Some(res) = f(current.data()) {
+                return Some(res);
+            }
+            current = OwnedNodeGuard::new(current.parent_handle().cloned()?);
         }
     }
 }

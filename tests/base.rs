@@ -362,7 +362,7 @@ fn guard_recursive_search() {
     let leaf = child.fork(vec![]);
 
     let g = leaf.guard();
-    let found = g.recursive_search(|v| if v.contains(&42) { Some(42) } else { None });
+    let found = g.search(|v| if v.contains(&42) { Some(42) } else { None });
     assert_eq!(found, Some(42));
 }
 
@@ -370,7 +370,7 @@ fn guard_recursive_search() {
 fn guard_recursive_search_none() {
     let root = Node::root(vec![1u32]);
     let g = root.guard();
-    let found = g.recursive_search(|v| if v.contains(&999) { Some(true) } else { None });
+    let found = g.search(|v| if v.contains(&999) { Some(true) } else { None });
     assert!(found.is_none());
 }
 
