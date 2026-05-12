@@ -1,4 +1,4 @@
-use forke::{Node, TraverseGuards};
+use forke::{Node, iter::TraverseGuards};
 use forke_test_utils::Tracked;
 
 #[test]

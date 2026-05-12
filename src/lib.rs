@@ -6,8 +6,7 @@ mod inner;
 mod guard;
 pub use guard::{NodeGuard, NodeWriteGuard, OwnedNodeGuard, OwnedNodeWriteGuard};
 
-mod iter;
-pub use iter::{TraverseGuards, TraverseIter, TraverseRefIter};
+pub mod iter;
 
 mod merge;
 pub use merge::{Merge, MergeInv};
@@ -21,8 +20,11 @@ const _: fn() = || {
     fn assert_sync<T: Sync>() {}
 
     assert_send_sync::<Node<()>>();
+    assert_sync::<NodeGuard<()>>();
+    assert_sync::<NodeWriteGuard<()>>();
     assert_sync::<OwnedNodeGuard<()>>();
     assert_sync::<OwnedNodeWriteGuard<()>>();
-    assert_sync::<TraverseIter<()>>();
-    assert_sync::<TraverseGuards<()>>();
+    assert_sync::<iter::TraverseIter<()>>();
+    assert_sync::<iter::TraverseRefIter<()>>();
+    assert_sync::<iter::TraverseGuards<()>>();
 };

@@ -1,6 +1,7 @@
 use crate::{
-    Merge, NodeGuard, NodeWriteGuard, OwnedNodeGuard, OwnedNodeWriteGuard, TraverseGuards,
-    TraverseIter, TraverseRefIter, inner::StrongHandle,
+    Merge, NodeGuard, NodeWriteGuard, OwnedNodeGuard, OwnedNodeWriteGuard,
+    inner::StrongHandle,
+    iter::{TraverseGuards, TraverseIter, TraverseRefIter},
 };
 
 /// Convenience bound alias: types stored in a [`Node`] must implement
