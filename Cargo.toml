@@ -12,9 +12,11 @@ forke-test-utils.path = "./test-utils"
 
 lockbell = "0.1"
 hashbrown = "0.17"
+litemap = "0.8"
 quick-impl = "0.2"
 parking_lot = "0.12"
 rand = "0.10"
+rustc-hash = "2"
 
 [package]
 name = "forke"
@@ -30,8 +32,10 @@ categories = ["concurrency", "data-structures"]
 
 [dependencies]
 lockbell.workspace = true
-hashbrown.workspace = true
+litemap.workspace = true
 quick-impl.workspace = true
+rustc-hash.workspace = true
+hashbrown.workspace = true
 
 [dev-dependencies]
 forke-test-utils.workspace = true

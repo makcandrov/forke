@@ -11,9 +11,10 @@ use lockbell::{
 use crate::{
     MergeInv, NodeData, NodeGuard,
     guard::{NodeWriteGuard, OwnedNodeGuard, OwnedNodeWriteGuard},
+    inner::map::ChildrenMap,
 };
 
-use super::{Multiplicity, NodeInner};
+use super::NodeInner;
 
 #[derive(Debug)]
 pub(crate) struct StrongHandle<T: NodeData> {
@@ -96,7 +97,7 @@ impl<T: NodeData> StrongHandle<T> {
 
     /// Read-locks the node, returning `None` if `inner` has been taken.
     ///
-    /// `inner` is only taken by `try_drop`'s `Multiplicity::Single` branch,
+    /// `inner` is only taken by `try_drop`'s single-child collapse branch,
     /// which requires `alive = false` — i.e. the user-facing `Node<T>` has
     /// been dropped. Callers anchored by a live `Node<T>` or a descendant's
     /// read lock may safely `.unwrap()` the result.
@@ -205,8 +206,8 @@ impl<T: NodeData> StrongHandle<T> {
                 node.alive = false;
             }
 
-            match Multiplicity::from_iter(&node.children) {
-                Multiplicity::None => {
+            match &node.children {
+                ChildrenMap::None => {
                     // Leaf: remove from tree.
                     if !self_drop && node.alive {
                         break;
@@ -240,11 +241,14 @@ impl<T: NodeData> StrongHandle<T> {
 
                     break;
                 }
-                Multiplicity::Multiple => {
+                ChildrenMap::Many(_) | ChildrenMap::Huge(_) => {
                     // Multiple children: keep the node in place.
                     break;
                 }
-                Multiplicity::Single((child_index, child_weak_handle)) => {
+                ChildrenMap::Single {
+                    index: child_index,
+                    handle: child_weak_handle,
+                } => {
                     let child_index = *child_index;
 
                     if child_guard_opt.is_none() {
@@ -285,10 +289,10 @@ impl<T: NodeData> StrongHandle<T> {
                         let parent_handle = node_owned.parent.expect("node has a parent");
 
                         let child_handle = {
-                            let (child_index_confirm, child_handle) =
-                                Multiplicity::from_iter(node_owned.children)
-                                    .into_single()
-                                    .expect("node has a single child");
+                            let (child_index_confirm, child_handle) = node_owned
+                                .children
+                                .into_single()
+                                .expect("node has a single child");
 
                             assert_eq!(child_index, child_index_confirm);
                             child_handle
@@ -316,10 +320,10 @@ impl<T: NodeData> StrongHandle<T> {
                         // Root: child becomes the new root.
                         let node_owned = node_opt_guard.take().unwrap();
 
-                        let (child_index_confirm, child_handle) =
-                            Multiplicity::from_iter(node_owned.children)
-                                .into_single()
-                                .expect("node has a single child");
+                        let (child_index_confirm, child_handle) = node_owned
+                            .children
+                            .into_single()
+                            .expect("node has a single child");
                         assert_eq!(child_index, child_index_confirm);
                         drop(child_handle);
 

@@ -331,6 +331,35 @@ const _: () = {
 };
 
 const _: () = {
+    use litemap::{Entry, LiteMap, store::StoreMut};
+    use std::hash::Hash;
+
+    impl<K, V, S> Merge for LiteMap<K, V, S>
+    where
+        K: Eq + Hash + Ord,
+        V: Merge,
+        S: StoreMut<K, V>,
+        LiteMap<K, V, S>: IntoIterator<Item = (K, V)>,
+    {
+        fn merge(parent: &mut Self, mut child: Self) {
+            let merge = if parent.len() < child.len() {
+                child = replace(parent, child);
+                <V as MergeInv>::merge_inv
+            } else {
+                <V as Merge>::merge
+            };
+
+            for (k, v) in child {
+                match parent.entry(k) {
+                    Entry::Occupied(e) => merge(e.into_mut(), v),
+                    Entry::Vacant(e) => drop(e.insert(v)),
+                }
+            }
+        }
+    }
+};
+
+const _: () = {
     use hashbrown::{HashMap, HashSet, hash_map};
     use std::hash::{BuildHasher, Hash};
 

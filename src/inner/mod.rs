@@ -1,5 +1,3 @@
-use hashbrown::HashMap;
-
 use crate::NodeData;
 
 mod common;
@@ -8,13 +6,13 @@ pub(crate) use common::Common;
 mod handle;
 pub(crate) use handle::{StrongHandle, WeakHandle};
 
-mod multiplicity;
-use multiplicity::Multiplicity;
+mod map;
+use map::ChildrenMap;
 
 #[derive(Debug)]
 pub(crate) struct NodeInner<T: NodeData> {
     parent: Option<StrongHandle<T>>,
-    children: HashMap<u64, WeakHandle<T>>,
+    children: ChildrenMap<T>,
     alive: bool,
     index: u64,
     common: Common,
@@ -25,7 +23,7 @@ impl<T: NodeData> NodeInner<T> {
     pub fn new(parent: Option<StrongHandle<T>>, common: Common, data: T) -> Self {
         Self {
             parent,
-            children: HashMap::new(),
+            children: ChildrenMap::new(),
             alive: true,
             index: common.next_node_index(),
             common,
@@ -53,7 +51,6 @@ impl<T: NodeData> NodeInner<T> {
 
     #[inline]
     pub fn insert_child(&mut self, index: u64, handle: WeakHandle<T>) {
-        let old = self.children.insert(index, handle);
-        debug_assert!(old.is_none(), "index duplicate");
+        self.children.insert(index, handle);
     }
 }
