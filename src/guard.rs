@@ -7,45 +7,38 @@ use crate::{
     inner::{NodeInner, StrongHandle},
 };
 
-/// A read-lock guard on a node, borrowed from a [`crate::Node`] handle.
-/// Provides access to the node's data and its parent.
+/// Borrowed read-lock guard on a node.
 #[derive(Debug)]
 #[must_use = "if unused the lock is immediately released"]
 pub struct NodeGuard<'a, T: NodeData> {
     guard: MappedRwLockBellReadGuard<'a, NodeInner<T>>,
 }
 
-/// An owned read-lock guard on a node. Unlike [`NodeGuard`], this is not
-/// tied to the lifetime of a [`crate::Node`] handle — it keeps the
-/// underlying allocation alive on its own.
+/// Owned read-lock guard on a node. Unlike [`NodeGuard`], keeps the node
+/// allocation alive on its own.
 #[derive(Debug)]
 #[must_use = "if unused the lock is immediately released"]
 pub struct OwnedNodeGuard<T: NodeData> {
-    // guard dropped before _handle (field declaration order)
-    //
-    // SAFETY invariant: `guard` holds a read lock on a RwLock that lives inside
-    // `_handle`'s Arc. The `'static` lifetime on `guard` is a lie: the true
-    // lifetime is that of the Arc, kept alive by `_handle`.
-    // Field drop order (guard first, _handle second) upholds this invariant.
+    // SAFETY: `guard`'s `'static` lifetime is a lie — it really borrows from
+    // `_handle`'s Arc. Field declaration order makes `guard` drop first,
+    // keeping the Arc alive for `guard`'s entire lifetime.
     guard: NodeGuard<'static, T>,
     _handle: StrongHandle<T>,
 }
 
-/// A write-lock guard on a node, borrowed from a [`crate::Node`] handle.
-/// Provides mutable access to the node's data.
+/// Borrowed write-lock guard on a node.
 #[derive(Debug)]
 #[must_use = "if unused the lock is immediately released"]
 pub struct NodeWriteGuard<'a, T: NodeData> {
     guard: MappedRwLockBellWriteGuard<'a, T>,
 }
 
-/// An owned write-lock guard on a node. Unlike [`NodeWriteGuard`], this is not
-/// tied to the lifetime of a [`crate::Node`] handle — it keeps the
-/// underlying allocation alive on its own.
+/// Owned write-lock guard on a node. Unlike [`NodeWriteGuard`], keeps the
+/// node allocation alive on its own.
 #[derive(Debug)]
 #[must_use = "if unused the lock is immediately released"]
 pub struct OwnedNodeWriteGuard<T: NodeData> {
-    // SAFETY: same invariant as `OwnedNodeGuard` — guard dropped before _handle.
+    // SAFETY: see `OwnedNodeGuard`.
     guard: NodeWriteGuard<'static, T>,
     _handle: StrongHandle<T>,
 }
@@ -57,7 +50,7 @@ impl<'a, T: NodeData> NodeGuard<'a, T> {
         self.guard.data()
     }
 
-    /// Acquires a read lock on the parent node, if any.
+    /// Read-locks the parent node, if any.
     #[inline]
     #[must_use]
     pub fn parent(&'a self) -> Option<Self> {
@@ -70,7 +63,7 @@ impl<'a, T: NodeData> NodeGuard<'a, T> {
 
     pub(crate) fn new(handle: &'a StrongHandle<T>) -> Self {
         Self {
-            guard: handle.read_node(),
+            guard: handle.try_read_node().unwrap(),
         }
     }
 
@@ -97,10 +90,7 @@ impl<'a, T: NodeData> NodeGuard<'a, T> {
 
 impl<T: NodeData> OwnedNodeGuard<T> {
     pub(crate) fn new(handle: StrongHandle<T>) -> Self {
-        // SAFETY: `guard` borrows from the Arc inside `handle`. Both are stored
-        // together in `OwnedNodeGuard`, which drops `guard` before `_handle`,
-        // keeping the Arc alive for the guard's entire lifetime. The `'static`
-        // lie is sound: the Arc is kept alive by `_handle`.
+        // SAFETY: see `OwnedNodeGuard`'s field-order invariant.
         Self {
             guard: unsafe {
                 transmute::<NodeGuard<'_, T>, NodeGuard<'static, T>>(NodeGuard::new(&handle))
@@ -119,7 +109,7 @@ impl<T: NodeData> OwnedNodeGuard<T> {
         self.guard.guard.parent()
     }
 
-    /// Acquires a read lock on the parent node, if any.
+    /// Read-locks the parent node, if any.
     #[inline]
     #[must_use]
     pub fn parent(&self) -> Option<Self> {
@@ -169,8 +159,7 @@ impl<'a, T: NodeData> NodeWriteGuard<'a, T> {
 
 impl<T: NodeData> OwnedNodeWriteGuard<T> {
     pub(crate) fn new(handle: StrongHandle<T>) -> Self {
-        // SAFETY: same as `OwnedNodeGuard` — guard borrows from the Arc inside
-        // `handle`, both stored together, guard dropped before `_handle`.
+        // SAFETY: see `OwnedNodeGuard::new`.
         Self {
             guard: unsafe {
                 transmute::<NodeWriteGuard<'_, T>, NodeWriteGuard<'static, T>>(NodeWriteGuard::new(

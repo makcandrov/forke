@@ -297,12 +297,11 @@ fn traverse_iter_root_to_leaf() {
 
 #[test]
 fn traverse_survives_starting_node_merge() {
-    // Regression: starting a traverse from a middle node and then dropping
-    // that node's `Node<T>` triggers a Single-child cascade that takes the
-    // node's `inner` to `None`. The iterator used to clone the StrongHandle
-    // and acquire its read lock lazily on the first `next()` call — which
-    // would unwrap `None` and panic. The fix is to acquire the starting
-    // guard eagerly in `new`.
+    // Race: starting a traverse from a middle node and then dropping that
+    // node's `Node<T>` triggers a Single-child cascade. Without the lock
+    // acquired by `TraverseIter::new`, the cascade would complete and take
+    // the node's `inner` to `None`, and the first `next()` call would
+    // panic. The fix is to lock the starting node eagerly in `new`.
     let root = Node::root(vec![1u32]);
     let mid = root.fork(vec![2]);
     let leaf = mid.fork(vec![3]);
@@ -311,13 +310,72 @@ fn traverse_survives_starting_node_merge() {
     drop(mid);
 
     let collected: Vec<Vec<u32>> = iter.map(|g| g.data().clone()).collect();
-    // `mid`'s starting guard kept its inner alive, so we still see `mid`'s
-    // original data even though the cascade has otherwise removed it.
     assert_eq!(collected[0], vec![2]);
-    // Walking up: after `mid` is taken out of the tree its parent pointer
-    // is cleared, so the iterator stops at the (now-detached) `mid` node.
-    // The exact upper bound depends on cascade timing, but the important
-    // property is no panic.
+
+    let _ = leaf;
+    let _ = root;
+}
+
+#[test]
+fn traverse_survives_drop_between_calls() {
+    // Race: between two `next()` calls, the next-to-yield ancestor's `Node`
+    // is dropped. Without the sandwich lock acquired during the previous
+    // `next()`, the ancestor's single-child cascade would complete in the
+    // gap, take its `inner`, and the next `next()` call would panic. With
+    // the sandwich, the previous call already holds a read lock on that
+    // ancestor, so the cascade is deferred and the iteration proceeds.
+    let root = Node::root(vec![1u32]);
+    let mid = root.fork(vec![2]);
+    let leaf = mid.fork(vec![3]);
+
+    let mut iter = leaf.traverse();
+
+    let g1 = iter.next().unwrap();
+    assert_eq!(g1.data(), &vec![3]);
+    drop(g1);
+
+    drop(mid);
+
+    let g2 = iter.next().unwrap();
+    assert_eq!(g2.data(), &vec![2]);
+    drop(g2);
+
+    let g3 = iter.next().unwrap();
+    assert_eq!(g3.data(), &vec![1]);
+    drop(g3);
+
+    assert!(iter.next().is_none());
+
+    let _ = leaf;
+    let _ = root;
+}
+
+#[test]
+fn traverse_ref_survives_drop_between_calls() {
+    // Same race as `traverse_survives_drop_between_calls` but exercised
+    // through the reference-yielding iterator. Here `TraverseGuards`'s
+    // storage anchors every previously-yielded node, which keeps the
+    // next ancestor pinned from being merged in the gap.
+    let root = Node::root(vec![1u32]);
+    let mid = root.fork(vec![2]);
+    let leaf = mid.fork(vec![3]);
+
+    let mut storage = TraverseGuards::new();
+    let mut iter = leaf.traverse_ref(&mut storage);
+
+    let d1 = iter.next().unwrap();
+    assert_eq!(d1, &vec![3]);
+
+    drop(mid);
+
+    let d2 = iter.next().unwrap();
+    assert_eq!(d2, &vec![2]);
+
+    let d3 = iter.next().unwrap();
+    assert_eq!(d3, &vec![1]);
+
+    assert!(iter.next().is_none());
+
     let _ = leaf;
     let _ = root;
 }

@@ -4,16 +4,14 @@ use crate::{
     iter::{TraverseGuards, TraverseIter, TraverseRefIter},
 };
 
-/// Convenience bound alias: types stored in a [`Node`] must implement
-/// [`Merge`], [`Send`], [`Sync`], and be `'static`.
+/// Bound alias for types storable in a [`Node`].
 pub trait NodeData: Merge + Send + Sync + 'static {}
 impl<T> NodeData for T where T: Merge + Send + Sync + 'static {}
 
-/// A handle to a node in the fork tree.
+/// Handle to a node in the fork tree.
 ///
-/// Dropping a `Node` marks it as dead. If the node has zero or one children
-/// it is removed from the tree and its data is merged into its neighbours
-/// via [`Merge`].
+/// Dropping a `Node` marks it dead. If it has zero or one children it is
+/// removed from the tree and its data is folded via [`Merge`].
 #[derive(Debug)]
 pub struct Node<T: NodeData> {
     handle: StrongHandle<T>,
@@ -26,7 +24,7 @@ impl<T: NodeData + Default> Default for Node<T> {
 }
 
 impl<T: NodeData> Node<T> {
-    /// Creates a new root node with the given data.
+    /// Creates a new root node.
     #[inline]
     #[must_use]
     pub fn root(data: T) -> Self {
@@ -35,7 +33,7 @@ impl<T: NodeData> Node<T> {
         }
     }
 
-    /// Forks this node, creating a child with the given data.
+    /// Forks this node, creating a child.
     ///
     /// # Example
     /// ```
@@ -53,7 +51,7 @@ impl<T: NodeData> Node<T> {
         }
     }
 
-    /// Forks this node multiple times, returning handles to all children.
+    /// Forks this node multiple times.
     ///
     /// The returned iterator holds this node's write lock until dropped.
     /// Consume or drop it promptly; holding it across unrelated work blocks
@@ -65,7 +63,7 @@ impl<T: NodeData> Node<T> {
             .map(|handle| Self { handle })
     }
 
-    /// Forks this node N times, creating an array of N child nodes.
+    /// Forks this node `N` times, returning an array of children.
     ///
     /// # Example
     /// ```
@@ -86,66 +84,54 @@ impl<T: NodeData> Node<T> {
 
     /// Acquires a read lock on this node, borrowing `self`.
     ///
-    /// Returns a guard that provides read access to the node's data via [`NodeGuard::data`].
-    /// The lock is held as long as the guard exists.
-    ///
     /// # Example
     /// ```
     /// # use forke::{Node, Merge};
     /// let root = Node::root(vec![1, 2, 3]);
     /// let guard = root.guard();
     /// assert_eq!(guard.data(), &vec![1, 2, 3]);
-    /// // lock released when guard is dropped
     /// ```
     #[inline]
     pub fn guard(&self) -> NodeGuard<'_, T> {
         self.handle.node_guard()
     }
 
-    /// Acquires a read lock on this node with `'static` lifetime.
-    /// The returned guard keeps the underlying data alive independently of
-    /// the `Node` handle.
+    /// Acquires an owned read-lock guard. Keeps the node alive
+    /// independently of this `Node` handle.
     #[inline]
     pub fn owned_guard(&self) -> OwnedNodeGuard<T> {
         self.handle.clone().owned_node_guard()
     }
 
     /// Acquires a write lock on this node, borrowing `self`.
-    /// Provides mutable access to the node's data.
     #[inline]
     pub fn guard_mut(&self) -> NodeWriteGuard<'_, T> {
         self.handle.node_write_guard()
     }
 
-    /// Acquires a write lock on this node with `'static` lifetime.
-    /// The returned guard keeps the underlying data alive independently of
-    /// the `Node` handle.
+    /// Acquires an owned write-lock guard. Keeps the node alive
+    /// independently of this `Node` handle.
     #[inline]
     pub fn owned_guard_mut(&self) -> OwnedNodeWriteGuard<T> {
         self.handle.clone().owned_node_write_guard()
     }
 
-    /// Returns an iterator that walks from this node up to the root,
-    /// yielding an [`OwnedNodeGuard`] for each visited node. Each guard is
-    /// independent — dropping it releases the read lock on that node.
+    /// Iterator from this node up to the root, yielding an
+    /// [`OwnedNodeGuard`] for each visited node.
     #[inline]
     pub fn traverse(&self) -> TraverseIter<T> {
         TraverseIter::new(&self.handle)
     }
 
-    /// Returns an iterator that walks from this node up to the root,
-    /// yielding `&T` references. Guards are accumulated in `guards` so all
-    /// read locks are held for the lifetime of the borrow.
+    /// Iterator from this node up to the root, yielding `&T` references.
+    /// Read locks accumulate in `guards` for the lifetime of the borrow.
     #[inline]
     pub fn traverse_ref<'a>(&self, guards: &'a mut TraverseGuards<T>) -> TraverseRefIter<'a, T> {
         TraverseRefIter::new(&self.handle, guards)
     }
 
     /// Walks from this node up to the root, returning the first non-`None`
-    /// value produced by the closure `f`.
-    ///
-    /// This is useful for searching for a condition in the ancestor chain.
-    /// Each node is visited once, starting from this node and continuing up to the root.
+    /// value produced by `f`. Each ancestor is visited once.
     ///
     /// # Example
     /// ```

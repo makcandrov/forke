@@ -94,24 +94,18 @@ impl<T: NodeData> StrongHandle<T> {
         OwnedNodeWriteGuard::new(self)
     }
 
-    pub fn read_node<'a>(&'a self) -> MappedRwLockBellReadGuard<'a, NodeInner<T>> {
-        // `inner` is only set to `None` inside `try_drop`'s `Multiplicity::Single`
-        // branch, which requires write locks on both the node and its child. To
-        // reach that branch the node's `alive` flag must be `false`, which only
-        // flips when the user-facing `Node<T>` is dropped.
-        //
-        // This function (and the others below) is only reached via the public
-        // guard constructors, which require a live `Node<T>` borrow — meaning
-        // `alive = true` and `inner` is still `Some`. The other places a
-        // `StrongHandle` can live (retry-callback closures inside `try_drop`
-        // itself) only ever call `try_drop`, which handles `None` explicitly.
-        //
-        // The unwrap is therefore unreachable from any safe API path.
-        RwLockBellReadGuard::map(self.inner.read(), |inner| inner.as_ref().unwrap())
+    /// Read-locks the node, returning `None` if `inner` has been taken.
+    ///
+    /// `inner` is only taken by `try_drop`'s `Multiplicity::Single` branch,
+    /// which requires `alive = false` — i.e. the user-facing `Node<T>` has
+    /// been dropped. Callers anchored by a live `Node<T>` or a descendant's
+    /// read lock may safely `.unwrap()` the result.
+    pub fn try_read_node<'a>(&'a self) -> Option<MappedRwLockBellReadGuard<'a, NodeInner<T>>> {
+        RwLockBellReadGuard::try_map(self.inner.read(), Option::as_ref).ok()
     }
 
     pub fn write_data<'a>(&'a self) -> MappedRwLockBellWriteGuard<'a, T> {
-        // See `read_node` for the soundness argument.
+        // Unwrap soundness: see `try_read_node`.
         RwLockBellWriteGuard::map(self.inner.write(), |inner| {
             &mut inner.as_mut().unwrap().data
         })
@@ -120,7 +114,7 @@ impl<T: NodeData> StrongHandle<T> {
     #[inline]
     fn write_node<U>(&self, f: impl FnOnce(&mut NodeInner<T>) -> U) -> U {
         let mut node_guard = self.inner.write();
-        // See `read_node` for the soundness argument.
+        // Unwrap soundness: see `try_read_node`.
         f(node_guard.as_mut().unwrap())
     }
 
@@ -172,19 +166,19 @@ impl<T: NodeData> StrongHandle<T> {
         let mut child_handle_opt: Option<StrongHandle<T>> = None;
 
         loop {
-            // Lock the child if there is some.
+            // Lock the child, if any.
             let child_guard_opt = if let Some(child_strong_handle) = &child_handle_opt {
                 let Some(child_opt_guard) = child_strong_handle.inner.try_write_or_else(retry_drop)
                 else {
-                    // Another thread reads the child - delay the drop.
+                    // Contended; defer.
                     return;
                 };
 
                 match child_opt_guard.try_map(Option::as_mut) {
                     Ok(child_guard) => Some(child_guard),
                     guard @ Err(_) => {
+                        // Child was merged away; restart.
                         drop(guard);
-                        // The child may have been dropped in the meantime. We need to start everything over.
                         child_handle_opt = None;
                         continue;
                     }
@@ -195,44 +189,36 @@ impl<T: NodeData> StrongHandle<T> {
 
             // Lock the node.
             let Some(mut node_opt_guard) = self.inner.try_write_or_else(retry_drop) else {
-                // Another thread reads the node - delay the drop.
                 return;
             };
 
             let Some(node) = node_opt_guard.as_mut() else {
-                // The node has already been merged away by a concurrent retry.
+                // Already merged away by a concurrent retry.
                 return;
             };
 
             let node_index = node.index;
 
-            // If this is the originator's drop, mark the node dead while we
-            // hold the write lock. Doing this before the match means that
-            // even if we have to bail later (e.g. fail to lock a child or
-            // parent), a future cascade arriving from another direction can
-            // still pass through us instead of seeing `alive = true` and
-            // stopping prematurely.
+            // Mark dead under the write lock so a cascade from another
+            // direction can pass through us even if we bail below.
             if self_drop {
                 node.alive = false;
             }
 
             match Multiplicity::from_iter(&node.children) {
                 Multiplicity::None => {
-                    // No children, the node is a leaf that can be removed from the tree.
-
+                    // Leaf: remove from tree.
                     if !self_drop && node.alive {
-                        // Cascade reached a live node. Stop.
                         break;
                     }
 
                     let Some(mut parent_handle) = node.parent.take() else {
-                        // If this is the root, there is nothing to do.
+                        // Root leaf: nothing to unlink.
                         break;
                     };
 
                     let Some(mut parent_guard) = parent_handle.inner.try_write_or_else(retry_drop)
                     else {
-                        // Another thread reads the parent - delay the drop.
                         node.parent = Some(parent_handle);
                         return;
                     };
@@ -249,50 +235,42 @@ impl<T: NodeData> StrongHandle<T> {
                     drop(child_handle);
                     drop(parent_guard);
 
-                    // The node is removed from the tree.
-                    // We need to recursively drop its parent if necessary.
+                    // Recurse: parent may now be collapsible.
                     parent_handle.try_drop(false);
 
                     break;
                 }
                 Multiplicity::Multiple => {
-                    // Two children or more, the node must not be dropped. The
-                    // `alive` flag was already set above if `self_drop`.
+                    // Multiple children: keep the node in place.
                     break;
                 }
                 Multiplicity::Single((child_index, child_weak_handle)) => {
                     let child_index = *child_index;
 
                     if child_guard_opt.is_none() {
-                        // The node has a children that has not yet been locked.
-                        // We need to start everything over to lock the child first.
-
+                        // Child not yet locked; restart with it locked.
                         drop(child_guard_opt);
                         child_handle_opt = Some(child_weak_handle.upgrade().unwrap());
                         continue;
                     };
 
-                    let mut child_guard = child_guard_opt.unwrap(); // verified above
-                    let child_handle = child_handle_opt.as_ref().unwrap(); // verified above
+                    let mut child_guard = child_guard_opt.unwrap();
+                    let child_handle = child_handle_opt.as_ref().unwrap();
 
                     if !child_handle.ptr_eq(child_weak_handle) {
-                        // Child has changed in the meantime.
+                        // Child changed; re-lock the new one.
                         drop(child_guard);
                         child_handle_opt = Some(child_weak_handle.upgrade().unwrap());
                         continue;
                     }
 
                     if !self_drop && node.alive {
-                        // Cascade reached a live node. Stop.
                         break;
                     }
 
                     if let Some(parent_handle) = node.parent.clone() {
-                        // The node isn't the root.
-
                         let Some(parent_guard) = parent_handle.inner.try_write_or_else(retry_drop)
                         else {
-                            // Another thread reads the parent - delay the drop.
                             return;
                         };
 
@@ -302,8 +280,6 @@ impl<T: NodeData> StrongHandle<T> {
                                     .as_mut()
                                     .expect("parent must not be dropped as a child exists")
                             });
-
-                        // We can take ownership of node.
 
                         let node_owned = node_opt_guard.take().unwrap();
                         let parent_handle = node_owned.parent.expect("node has a parent");
@@ -318,34 +294,26 @@ impl<T: NodeData> StrongHandle<T> {
                             child_handle
                         };
 
-                        // Link parent to child
-
+                        // Relink parent ↔ child, skipping this node.
                         let node_child_handle = parent_guard
                             .children
                             .remove(&node_index)
                             .expect("node is child of parent");
                         drop(node_child_handle);
-
                         parent_guard.insert_child(child_index, child_handle);
-
-                        // Link child to parent
 
                         let node_parent_handle = child_guard
                             .parent
                             .replace(parent_handle)
                             .expect("child has a parent");
-
-                        // This handle is stale, do not run custom drop logic.
+                        // Stale handle: just decrement, no cascade.
                         drop(node_parent_handle);
 
-                        // Merge data
                         MergeInv::merge_inv(&mut child_guard.data, node_owned.data);
 
                         break;
                     } else {
-                        // The node is the root.
-                        // We can take ownership of node.
-
+                        // Root: child becomes the new root.
                         let node_owned = node_opt_guard.take().unwrap();
 
                         let (child_index_confirm, child_handle) =
@@ -355,14 +323,11 @@ impl<T: NodeData> StrongHandle<T> {
                         assert_eq!(child_index, child_index_confirm);
                         drop(child_handle);
 
-                        // Remove parent from the child.
                         let node_parent_handle =
                             child_guard.parent.take().expect("child has a parent");
-
-                        // This handle is stale, do not run custom drop logic.
+                        // Stale handle: just decrement, no cascade.
                         drop(node_parent_handle);
 
-                        // Merge data
                         MergeInv::merge_inv(&mut child_guard.data, node_owned.data);
                         break;
                     }

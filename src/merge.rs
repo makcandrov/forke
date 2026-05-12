@@ -5,28 +5,21 @@ use std::{
     mem::replace,
 };
 
-/// Defines how a child node's data is folded into its parent when the child
-/// is removed from the tree.
+/// Folds a child's data into its parent when the child is removed.
 ///
 /// # Panic safety
 ///
-/// Implementations **should not panic**. A panic during a merge can leave the
-/// affected node's data partially consumed (the child's old value is lost),
-/// and because the cascade may be running inside a queued callback, the
-/// panic may surface on a thread that didn't initiate the drop. Prefer
-/// fallible operations that produce `Result` and store errors in the data
-/// rather than panicking.
+/// `merge` should not panic. A panic leaves the child's old value lost and
+/// can surface on whichever thread happens to be running the cascade
+/// callback. Use `Result` inside the data type instead.
 pub trait Merge {
     /// Merges `child` into `parent`.
     fn merge(parent: &mut Self, child: Self);
 }
 
-/// Inverse merge direction — folds a parent's data into its child.
-///
-/// This trait is automatically implemented for all [`Merge`] types by swapping
-/// the operands and calling [`Merge::merge`]. It is used internally when a
-/// parent node with a single child is merged down the tree: the parent's
-/// data is merged into the child (rather than the typical child-into-parent).
+/// Inverse merge — folds a parent's data into its child. Auto-derived for
+/// every [`Merge`] type and used when a single-child parent is collapsed
+/// downward.
 ///
 /// # Example
 /// ```
