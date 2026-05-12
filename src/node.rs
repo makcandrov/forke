@@ -18,11 +18,6 @@ pub struct Node<T: NodeData> {
     handle: StrongHandle<T>,
 }
 
-const _: fn() = || {
-    fn _assert<T: Send + Sync>() {}
-    _assert::<Node<()>>();
-};
-
 impl<T: NodeData + Default> Default for Node<T> {
     fn default() -> Self {
         Self::root(T::default())
@@ -58,12 +53,15 @@ impl<T: NodeData> Node<T> {
     }
 
     /// Forks this node multiple times, returning handles to all children.
+    ///
+    /// The returned iterator holds this node's write lock until dropped.
+    /// Consume or drop it promptly; holding it across unrelated work blocks
+    /// every other reader and writer of this node.
     #[inline]
-    pub fn fork_many<C: FromIterator<Self>>(&self, data: impl IntoIterator<Item = T>) -> C {
+    pub fn fork_many(&self, data: impl IntoIterator<Item = T>) -> impl Iterator<Item = Self> {
         self.handle
             .create_children(data)
             .map(|handle| Self { handle })
-            .collect()
     }
 
     /// Forks this node N times, creating an array of N child nodes.

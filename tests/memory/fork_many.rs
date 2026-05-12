@@ -11,7 +11,7 @@ fn fork_many_then_drop_all() {
     {
         let root = Node::root(());
         for _ in 0..20 {
-            let children = root.fork_many::<Vec<_>>((0..100).map(|_| ()));
+            let children: Vec<_> = root.fork_many((0..100).map(|_| ())).collect();
             drop(children);
         }
         drop(root);
@@ -22,7 +22,7 @@ fn fork_many_then_drop_all() {
     for _ in 0..10 {
         let root = Node::root(());
         for _ in 0..20 {
-            let children = root.fork_many::<Vec<_>>((0..100).map(|_| ()));
+            let children: Vec<_> = root.fork_many((0..100).map(|_| ())).collect();
             drop(children);
         }
         drop(root);

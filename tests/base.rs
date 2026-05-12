@@ -61,7 +61,9 @@ fn fork_single_child() {
 #[test]
 fn fork_many() {
     let root = Node::root(String::new());
-    let children: Vec<_> = root.fork_many(vec!["a".into(), "b".into(), "c".into()]);
+    let children: Vec<_> = root
+        .fork_many(vec!["a".into(), "b".into(), "c".into()])
+        .collect();
     assert_eq!(children.len(), 3);
     assert_eq!(*children[0].guard().data(), "a");
     assert_eq!(*children[1].guard().data(), "b");
@@ -291,6 +293,33 @@ fn traverse_iter_root_to_leaf() {
 
     let collected: Vec<Vec<u32>> = leaf.traverse().map(|g| g.data().clone()).collect();
     assert_eq!(collected, vec![vec![3], vec![2], vec![1]]);
+}
+
+#[test]
+fn traverse_survives_starting_node_merge() {
+    // Regression: starting a traverse from a middle node and then dropping
+    // that node's `Node<T>` triggers a Single-child cascade that takes the
+    // node's `inner` to `None`. The iterator used to clone the StrongHandle
+    // and acquire its read lock lazily on the first `next()` call — which
+    // would unwrap `None` and panic. The fix is to acquire the starting
+    // guard eagerly in `new`.
+    let root = Node::root(vec![1u32]);
+    let mid = root.fork(vec![2]);
+    let leaf = mid.fork(vec![3]);
+
+    let iter = mid.traverse();
+    drop(mid);
+
+    let collected: Vec<Vec<u32>> = iter.map(|g| g.data().clone()).collect();
+    // `mid`'s starting guard kept its inner alive, so we still see `mid`'s
+    // original data even though the cascade has otherwise removed it.
+    assert_eq!(collected[0], vec![2]);
+    // Walking up: after `mid` is taken out of the tree its parent pointer
+    // is cleared, so the iterator stops at the (now-detached) `mid` node.
+    // The exact upper bound depends on cascade timing, but the important
+    // property is no panic.
+    let _ = leaf;
+    let _ = root;
 }
 
 #[test]
