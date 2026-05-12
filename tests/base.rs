@@ -61,9 +61,7 @@ fn fork_single_child() {
 #[test]
 fn fork_many() {
     let root = Node::root(String::new());
-    let children: Vec<_> = root
-        .fork_many(vec!["a".into(), "b".into(), "c".into()])
-        .collect();
+    let children: Vec<_> = root.fork_many(vec!["a".into(), "b".into(), "c".into()]);
     assert_eq!(children.len(), 3);
     assert_eq!(*children[0].guard().data(), "a");
     assert_eq!(*children[1].guard().data(), "b");
