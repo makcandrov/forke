@@ -2,17 +2,17 @@
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
-repository = "https://github.com/makcandrov/lockbell"
-homepage = "https://github.com/makcandrov/lockbell"
+repository = "https://github.com/makcandrov/forke"
+homepage = "https://github.com/makcandrov/forke"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 forke.path = "./"
 forke-test-utils.path = "./test-utils"
 
-lockbell = "0.1"
 hashbrown = "0.17"
 litemap = "0.8"
+lockbell = "0.1"
 quick-impl = "0.2"
 parking_lot = "0.12"
 rand = "0.10"
