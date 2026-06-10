@@ -74,6 +74,10 @@ fine-grained locking with automatic retry: if a lock is contended during a merge
 cascade, the operation is deferred and retried later rather than blocking the
 caller.
 
+Per-node locks are **not reentrant**: forking or write-locking a node while the
+same thread already holds a guard on it deadlocks, like re-locking a
+`std::sync::Mutex`. Drop the guard first.
+
 ## License
 
 MIT OR Apache-2.0

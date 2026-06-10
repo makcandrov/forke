@@ -12,6 +12,13 @@ use std::{
 /// `merge` should not panic. A panic leaves the child's old value lost and
 /// can surface on whichever thread happens to be running the cascade
 /// callback. Use `Result` inside the data type instead.
+///
+/// # Re-entrancy
+///
+/// `merge` is called while internal node locks are held, on whichever
+/// thread triggers the cascade. It must not touch the tree it belongs to
+/// (forking, dropping nodes, taking guards, traversing): doing so can
+/// deadlock.
 pub trait Merge {
     /// Merges `child` into `parent`.
     fn merge(parent: &mut Self, child: Self);
@@ -518,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn test_hashmap_merge() {
+    fn merge_hashmap_successive_rounds() {
         let mut parent = HashMap::from([
             (5, "he".to_string()),
             (100, "hello".to_string()),

@@ -12,6 +12,28 @@ impl<T> NodeData for T where T: Merge + Send + Sync + 'static {}
 ///
 /// Dropping a `Node` marks it dead. If it has zero or one children it is
 /// removed from the tree and its data is folded via [`Merge`].
+///
+/// # Lock reentrancy
+///
+/// Each node is protected by a non-reentrant read-write lock. Calling a
+/// write-acquiring method ([`fork`], [`fork_many`], [`fork_n`],
+/// [`guard_mut`], [`owned_guard_mut`]) on a node while the same thread
+/// already holds a guard on that node deadlocks, exactly like re-locking a
+/// [`std::sync::Mutex`]. Re-acquiring a read guard on a node the thread
+/// already holds one for ([`guard`], [`traverse`], [`search`]) can also
+/// deadlock if another thread starts waiting for a write lock in between.
+///
+/// Dropping a `Node` never blocks: if a lock is contended, the removal is
+/// deferred and retried once the lock is released.
+///
+/// [`fork`]: Self::fork
+/// [`fork_many`]: Self::fork_many
+/// [`fork_n`]: Self::fork_n
+/// [`guard`]: Self::guard
+/// [`guard_mut`]: Self::guard_mut
+/// [`owned_guard_mut`]: Self::owned_guard_mut
+/// [`traverse`]: Self::traverse
+/// [`search`]: Self::search
 #[derive(Debug)]
 pub struct Node<T: NodeData> {
     handle: StrongHandle<T>,

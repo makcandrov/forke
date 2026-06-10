@@ -1,3 +1,7 @@
+//! Shared helpers for the `forke` integration tests: a payload type whose
+//! drops and merges can be observed from outside the tree, and a global
+//! allocator that tracks live allocations for leak detection.
+
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::{
     Arc,
@@ -7,6 +11,12 @@ use std::sync::{
 use forke::Merge;
 use parking_lot::RwLock;
 
+/// Global allocator wrapper that keeps a running total of allocated bytes.
+///
+/// Install it with `#[global_allocator]` and compare [`allocated`] snapshots
+/// taken before and after the scenario under test: equal totals mean no leak.
+///
+/// [`allocated`]: Self::allocated
 #[derive(Debug, Default)]
 pub struct TrackingAllocator {
     inner: System,
@@ -21,6 +31,7 @@ impl TrackingAllocator {
         }
     }
 
+    /// Currently allocated bytes.
     pub fn allocated(&self) -> usize {
         self.allocated.load(Relaxed)
     }
@@ -53,15 +64,20 @@ unsafe impl GlobalAlloc for TrackingAllocator {
     }
 }
 
-static NEXT_ID: AtomicU64 = AtomicU64::new(0);
-
+/// Process-wide unique identifier of a [`Tracked`] payload.
 pub type Id = u64;
 
-pub fn next_id() -> Id {
+static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+
+fn next_id() -> Id {
     NEXT_ID.fetch_add(1, Relaxed)
 }
 
-/// Per-node payload that tracks drops and merges externally.
+/// Node payload whose drop and merge events are recorded externally.
+///
+/// Its [`Merge`] implementation appends the consumed child's [`Id`] to the
+/// parent's merge log, so tests can reconstruct exactly which payloads were
+/// folded where.
 #[derive(Debug)]
 pub struct Tracked {
     id: Id,
@@ -69,7 +85,8 @@ pub struct Tracked {
     merged_into_me: Arc<RwLock<Vec<Id>>>,
 }
 
-/// External observer — can check state after the node is gone.
+/// External observer of a [`Tracked`] payload — usable after the payload
+/// itself is gone.
 #[derive(Debug, Clone)]
 pub struct Obs {
     id: Id,
@@ -90,6 +107,7 @@ impl Tracked {
         self.id
     }
 
+    /// Creates an observer of this payload.
     pub fn obs(&self) -> Obs {
         Obs {
             id: self.id,
@@ -98,6 +116,7 @@ impl Tracked {
         }
     }
 
+    /// Creates a payload together with its observer.
     pub fn pair() -> (Self, Obs) {
         let t = Self::new();
         let o = t.obs();
@@ -128,10 +147,13 @@ impl Obs {
         self.id
     }
 
+    /// Whether the observed payload has been dropped.
     pub fn is_dropped(&self) -> bool {
         self.dropped.load(Relaxed)
     }
 
+    /// Ids of the payloads that were merged into the observed payload, in
+    /// merge order.
     pub fn merges(&self) -> Vec<Id> {
         self.merged_into_me.read().clone()
     }
