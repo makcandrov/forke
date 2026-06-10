@@ -176,6 +176,44 @@ fn concurrent_traverse_during_drop() {
 }
 
 #[test]
+fn concurrent_traverse_step_by_step_during_merge() {
+    // Regression test: `TraverseIter::next` used to release the lock on the
+    // most recently yielded node before the next `.next()` call. A concurrent
+    // merge of an ancestor would set its `NodeInner` to `None`, making the
+    // next call panic on an `unwrap`. The iterator now anchors a read lock on
+    // the previously yielded node so the parent cannot be merged away.
+    for _ in 0..1000 {
+        let root = Node::root(vec![1u32]);
+        let mid = root.fork(vec![2]);
+        let leaf = mid.fork(vec![3]);
+
+        let barrier = Arc::new(Barrier::new(2));
+
+        thread::scope(|s| {
+            let b = barrier.clone();
+            let r = &leaf;
+            s.spawn(move || {
+                b.wait();
+                let it = r.traverse();
+                for g in it {
+                    let _ = g.data().clone();
+                    drop(g);
+                    std::thread::yield_now();
+                }
+            });
+
+            s.spawn(move || {
+                barrier.wait();
+                drop(mid);
+            });
+        });
+
+        drop(leaf);
+        drop(root);
+    }
+}
+
+#[test]
 fn concurrent_write_during_drop() {
     for _ in 0..200 {
         let root = Node::root(vec![1u32]);
