@@ -31,11 +31,10 @@ keywords = ["tree", "concurrency", "data-structure", "thread-safe", "fork"]
 categories = ["concurrency", "data-structures"]
 
 [dependencies]
-lockbell.workspace = true
 litemap.workspace = true
+lockbell.workspace = true
 quick-impl.workspace = true
 rustc-hash.workspace = true
-hashbrown.workspace = true
 
 [dev-dependencies]
 forke-test-utils.workspace = true

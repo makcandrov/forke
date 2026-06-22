@@ -1,11 +1,8 @@
-use hashbrown::HashMap;
 use litemap::LiteMap;
 use quick_impl::quick_impl_all;
-use rustc_hash::FxBuildHasher;
+use rustc_hash::FxHashMap;
 
 use crate::{NodeData, inner::WeakHandle};
-
-type FxMap<T> = HashMap<u64, WeakHandle<T>, FxBuildHasher>;
 
 /// `Many` → `Huge` once `len > PROMOTE_AT` after an insert.
 const PROMOTE_AT: usize = 32;
@@ -27,7 +24,7 @@ pub(crate) enum ChildrenMap<T: NodeData> {
         handle: WeakHandle<T>,
     },
     Many(LiteMap<u64, WeakHandle<T>>),
-    Huge(FxMap<T>),
+    Huge(FxHashMap<u64, WeakHandle<T>>),
 }
 
 impl<T: NodeData> ChildrenMap<T> {
@@ -58,7 +55,8 @@ impl<T: NodeData> ChildrenMap<T> {
                 }
                 if map.len() > PROMOTE_AT {
                     let lite = self.set_none().into_many().unwrap();
-                    let mut huge = FxMap::with_capacity_and_hasher(lite.len(), FxBuildHasher);
+                    let mut huge =
+                        FxHashMap::with_capacity_and_hasher(lite.len(), Default::default());
                     huge.extend(lite);
                     *self = Self::Huge(huge);
                 }
