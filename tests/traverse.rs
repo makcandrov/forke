@@ -1,6 +1,25 @@
 //! Traversal and search from a node up to the root.
 
-use forke::{Node, iter::TraverseGuards};
+use std::sync::Arc;
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
+
+use forke::{Node, NodeData, iter::TraverseGuards};
+
+/// Whether `node`'s write lock can currently be acquired.
+///
+/// The probe runs on a detached thread: when the lock is unavailable it
+/// blocks forever, so it must never be joined. It owns its `Arc<Node<T>>`,
+/// which is all it touches, so leaking it is harmless.
+fn write_lock_available<T: NodeData>(node: Arc<Node<T>>) -> bool {
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        drop(node.guard_mut());
+        tx.send(()).ok();
+    });
+    rx.recv_timeout(Duration::from_secs(2)).is_ok()
+}
 
 #[test]
 fn traverse_iter_root_to_leaf() {
@@ -105,6 +124,73 @@ fn traverse_ref_survives_drop_between_calls() {
 
     let _ = leaf;
     let _ = root;
+}
+
+#[test]
+fn traverse_ref_clear_releases_locks() {
+    // The accumulated guards outlive the iterator by design: the yielded
+    // references borrow the storage, not the iterator. `clear` is how the
+    // caller gives the read locks back before dropping the storage.
+    let root = Arc::new(Node::root(vec![1u32]));
+    let mid = root.fork(vec![2]);
+    let leaf = mid.fork(vec![3]);
+
+    let mut guards = TraverseGuards::new();
+    {
+        let collected: Vec<&Vec<u32>> = leaf.traverse_ref(&mut guards).collect();
+        assert_eq!(collected.len(), 3);
+    }
+
+    guards.clear();
+    assert!(
+        write_lock_available(root.clone()),
+        "clear left the traversed path read-locked"
+    );
+
+    let _ = (guards, mid, leaf);
+}
+
+#[test]
+fn traverse_ref_reuse_releases_the_previous_guards() {
+    // A second traversal through the same storage must drop the first
+    // one's guards before taking new ones, rather than stacking a second
+    // read lock on every visited node. Releasing them lets mid's deferred
+    // collapse finally run, so the second traversal walks a shorter path.
+    let root = Node::root(vec![1u32]);
+    let mid = root.fork(vec![2]);
+    let leaf = mid.fork(vec![3]);
+
+    let mut guards = TraverseGuards::new();
+    assert_eq!(leaf.traverse_ref(&mut guards).count(), 3);
+
+    // mid is dead with a single child, but the collapse needs write locks
+    // the traversal's guards are holding, so it defers.
+    drop(mid);
+
+    assert_eq!(
+        leaf.traverse_ref(&mut guards).count(),
+        2,
+        "the second traversal kept the first one's guards, so mid never collapsed"
+    );
+    assert_eq!(leaf.guard().data(), &vec![2, 3]);
+
+    let _ = root;
+}
+
+#[test]
+fn traverse_ref_storage_is_reusable() {
+    // Repeated traversals through one storage each yield the whole path.
+    let root = Node::root(vec![1u32]);
+    let mid = root.fork(vec![2]);
+    let leaf = mid.fork(vec![3]);
+
+    let mut guards = TraverseGuards::new();
+    for _ in 0..3 {
+        let collected: Vec<&Vec<u32>> = leaf.traverse_ref(&mut guards).collect();
+        assert_eq!(collected, vec![&vec![3], &vec![2], &vec![1]]);
+    }
+
+    let _ = (mid, root);
 }
 
 #[test]

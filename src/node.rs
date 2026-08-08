@@ -146,7 +146,12 @@ impl<T: NodeData> Node<T> {
     }
 
     /// Iterator from this node up to the root, yielding `&T` references.
-    /// Read locks accumulate in `guards` for the lifetime of the borrow.
+    ///
+    /// Read locks accumulate in `guards`, keeping the yielded references
+    /// valid for the lifetime of the borrow. They are released when
+    /// `guards` is reused by the next traversal, dropped, or
+    /// [`cleared`](TraverseGuards::clear) — until then the visited path
+    /// stays read-locked and writers block.
     #[inline]
     pub fn traverse_ref<'a>(&self, guards: &'a mut TraverseGuards<T>) -> TraverseRefIter<'a, T> {
         TraverseRefIter::new(&self.handle, guards)
