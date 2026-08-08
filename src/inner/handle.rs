@@ -19,20 +19,17 @@ use super::NodeInner;
 #[derive(Debug)]
 pub(crate) struct StrongHandle<T: NodeData> {
     inner: Arc<RwLockBell<Option<NodeInner<T>>>>,
-    index: u64,
 }
 
 #[derive(Debug)]
 pub(crate) struct WeakHandle<T: NodeData> {
     inner: Weak<RwLockBell<Option<NodeInner<T>>>>,
-    index: u64,
 }
 
 impl<T: NodeData> Clone for StrongHandle<T> {
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
-            index: self.index,
         }
     }
 }
@@ -41,7 +38,6 @@ impl<T: NodeData> Clone for WeakHandle<T> {
     fn clone(&self) -> Self {
         Self {
             inner: Weak::clone(&self.inner),
-            index: self.index,
         }
     }
 }
@@ -50,7 +46,6 @@ impl<T: NodeData> WeakHandle<T> {
     pub fn upgrade(&self) -> Option<StrongHandle<T>> {
         Some(StrongHandle {
             inner: Weak::upgrade(&self.inner)?,
-            index: self.index,
         })
     }
 }
@@ -58,7 +53,6 @@ impl<T: NodeData> WeakHandle<T> {
 impl<T: NodeData> StrongHandle<T> {
     fn new(node: NodeInner<T>) -> Self {
         Self {
-            index: node.index,
             inner: Arc::new(RwLockBell::new(Some(node))),
         }
     }
@@ -71,7 +65,6 @@ impl<T: NodeData> StrongHandle<T> {
     pub fn downgrade(&self) -> WeakHandle<T> {
         WeakHandle {
             inner: Arc::downgrade(&self.inner),
-            index: self.index,
         }
     }
 
