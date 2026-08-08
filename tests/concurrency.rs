@@ -150,6 +150,47 @@ fn concurrent_deep_tree_random_drops() {
 }
 
 #[test]
+fn concurrent_drops_across_children_map_boundaries() {
+    // The children map changes representation as it grows and shrinks.
+    // Crossing those thresholds while several threads remove siblings must
+    // not panic, lose a child, or strand a payload.
+    const CHILDREN: usize = 64;
+    const THREADS: usize = 8;
+
+    for _ in 0..100 {
+        let (rd, ro) = Tracked::pair();
+        let root = Node::root(rd);
+
+        let mut observers = Vec::new();
+        let mut chunks: Vec<Vec<Node<Tracked>>> = (0..THREADS).map(|_| Vec::new()).collect();
+        for i in 0..CHILDREN {
+            let (cd, co) = Tracked::pair();
+            observers.push(co);
+            chunks[i % THREADS].push(root.fork(cd));
+        }
+        drop(root); // dead, but far too many children to collapse
+
+        let barrier = Arc::new(Barrier::new(THREADS));
+        thread::scope(|s| {
+            for chunk in chunks {
+                let b = barrier.clone();
+                s.spawn(move || {
+                    b.wait();
+                    for child in chunk {
+                        drop(child);
+                    }
+                });
+            }
+        });
+
+        for obs in &observers {
+            assert!(obs.is_dropped(), "child payload {} leaked", obs.id());
+        }
+        assert!(ro.is_dropped(), "root payload leaked");
+    }
+}
+
+#[test]
 fn concurrent_fork_and_drop() {
     // One thread forks children, another drops a sibling.
     for _ in 0..200 {
