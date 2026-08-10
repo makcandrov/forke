@@ -1,6 +1,7 @@
-use std::mem::transmute;
-
-use lockbell::{MappedRwLockBellReadGuard, MappedRwLockBellWriteGuard};
+use lockbell::{
+    ArcRwLockBellReadGuard, ArcRwLockBellWriteGuard, MappedRwLockBellReadGuard,
+    MappedRwLockBellWriteGuard,
+};
 
 use crate::{
     NodeData,
@@ -16,14 +17,15 @@ pub struct NodeGuard<'a, T: NodeData> {
 
 /// Owned read-lock guard on a node. Unlike [`NodeGuard`], keeps the node
 /// allocation alive on its own.
+///
+/// The `Arc` guard owns the node's allocation outright, so nothing here
+/// borrows. `lockbell` offers no mapped `Arc` guard, so the `Option` the
+/// node lives behind is projected on each access instead of once at
+/// construction.
 #[derive(Debug)]
 #[must_use = "if unused the lock is immediately released"]
 pub struct OwnedNodeGuard<T: NodeData> {
-    // SAFETY: `guard`'s `'static` lifetime is a lie — it really borrows from
-    // `_handle`'s Arc. Field declaration order makes `guard` drop first,
-    // keeping the Arc alive for `guard`'s entire lifetime.
-    guard: NodeGuard<'static, T>,
-    _handle: StrongHandle<T>,
+    guard: ArcRwLockBellReadGuard<Option<NodeInner<T>>>,
 }
 
 /// Borrowed write-lock guard on a node.
@@ -35,12 +37,12 @@ pub struct NodeWriteGuard<'a, T: NodeData> {
 
 /// Owned write-lock guard on a node. Unlike [`NodeWriteGuard`], keeps the
 /// node allocation alive on its own.
+///
+/// See [`OwnedNodeGuard`] for why the `Option` is projected per access.
 #[derive(Debug)]
 #[must_use = "if unused the lock is immediately released"]
 pub struct OwnedNodeWriteGuard<T: NodeData> {
-    // SAFETY: see `OwnedNodeGuard`.
-    guard: NodeWriteGuard<'static, T>,
-    _handle: StrongHandle<T>,
+    guard: ArcRwLockBellWriteGuard<Option<NodeInner<T>>>,
 }
 
 impl<'a, T: NodeData> NodeGuard<'a, T> {
@@ -90,23 +92,25 @@ impl<'a, T: NodeData> NodeGuard<'a, T> {
 
 impl<T: NodeData> OwnedNodeGuard<T> {
     pub(crate) fn new(handle: StrongHandle<T>) -> Self {
-        // SAFETY: see `OwnedNodeGuard`'s field-order invariant.
         Self {
-            guard: unsafe {
-                transmute::<NodeGuard<'_, T>, NodeGuard<'static, T>>(NodeGuard::new(&handle))
-            },
-            _handle: handle,
+            guard: handle.read_arc_node(),
         }
+    }
+
+    /// Unwrap soundness: see [`StrongHandle::try_read_node`].
+    #[inline]
+    fn node(&self) -> &NodeInner<T> {
+        self.guard.as_ref().unwrap()
     }
 
     /// Returns a reference to the node's data.
     #[inline]
     pub fn data(&self) -> &T {
-        self.guard.data()
+        self.node().data()
     }
 
     pub(crate) fn parent_handle(&self) -> Option<&StrongHandle<T>> {
-        self.guard.guard.parent()
+        self.node().parent()
     }
 
     /// Read-locks the parent node, if any.
@@ -159,26 +163,24 @@ impl<'a, T: NodeData> NodeWriteGuard<'a, T> {
 
 impl<T: NodeData> OwnedNodeWriteGuard<T> {
     pub(crate) fn new(handle: StrongHandle<T>) -> Self {
-        // SAFETY: see `OwnedNodeGuard::new`.
         Self {
-            guard: unsafe {
-                transmute::<NodeWriteGuard<'_, T>, NodeWriteGuard<'static, T>>(NodeWriteGuard::new(
-                    &handle,
-                ))
-            },
-            _handle: handle,
+            guard: handle.write_arc_node(),
         }
     }
 
     /// Returns a reference to the node's data.
+    ///
+    /// Unwrap soundness: see [`StrongHandle::try_read_node`].
     #[inline]
     pub fn data(&self) -> &T {
-        self.guard.data()
+        self.guard.as_ref().unwrap().data()
     }
 
     /// Returns a mutable reference to the node's data.
+    ///
+    /// Unwrap soundness: see [`StrongHandle::try_read_node`].
     #[inline]
     pub fn data_mut(&mut self) -> &mut T {
-        self.guard.data_mut()
+        self.guard.as_mut().unwrap().data_mut()
     }
 }

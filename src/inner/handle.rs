@@ -4,8 +4,8 @@ use std::{
 };
 
 use lockbell::{
-    MappedRwLockBellReadGuard, MappedRwLockBellWriteGuard, RwLockBell, RwLockBellReadGuard,
-    RwLockBellWriteGuard,
+    ArcRwLockBellReadGuard, ArcRwLockBellWriteGuard, MappedRwLockBellReadGuard,
+    MappedRwLockBellWriteGuard, RwLockBell, RwLockBellReadGuard, RwLockBellWriteGuard,
 };
 
 use crate::{
@@ -98,6 +98,20 @@ impl<T: NodeData> StrongHandle<T> {
         RwLockBellReadGuard::try_map(self.inner.read(), Option::as_ref).ok()
     }
 
+    /// Read-locks the node through the `Arc`, so the guard owns the node's
+    /// allocation instead of borrowing it.
+    ///
+    /// `lockbell` has no mapped `Arc` guard, so the `Option` stays in the
+    /// guard's type and callers project it per access.
+    pub fn read_arc_node(&self) -> ArcRwLockBellReadGuard<Option<NodeInner<T>>> {
+        self.inner.read_arc()
+    }
+
+    /// Write-locks the node through the `Arc`. See [`Self::read_arc_node`].
+    pub fn write_arc_node(&self) -> ArcRwLockBellWriteGuard<Option<NodeInner<T>>> {
+        self.inner.write_arc()
+    }
+
     pub fn write_data<'a>(&'a self) -> MappedRwLockBellWriteGuard<'a, T> {
         // Unwrap soundness: see `try_read_node`.
         RwLockBellWriteGuard::map(self.inner.write(), |inner| {
@@ -168,7 +182,7 @@ impl<T: NodeData> StrongHandle<T> {
                     return;
                 };
 
-                match child_opt_guard.try_map(Option::as_mut) {
+                match RwLockBellWriteGuard::try_map(child_opt_guard, Option::as_mut) {
                     Ok(child_guard) => Some(child_guard),
                     guard @ Err(_) => {
                         // Child was merged away; restart.

@@ -35,6 +35,10 @@ impl<T: NodeData> NodeInner<T> {
         &self.data
     }
 
+    pub fn data_mut(&mut self) -> &mut T {
+        &mut self.data
+    }
+
     pub fn parent(&self) -> Option<&StrongHandle<T>> {
         self.parent.as_ref()
     }

@@ -12,7 +12,7 @@ forke-test-utils.path = "./test-utils"
 
 hashbrown = "0.17"
 litemap = "0.8"
-lockbell = "0.1"
+lockbell = { version = "0.2", features = ["arc_lock"] }
 quick-impl = "0.2"
 parking_lot = "0.12"
 rand = "0.10"

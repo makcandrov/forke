@@ -212,7 +212,11 @@ fn long_cascade_stays_shallow() {
     // down one node at a time. The cascade must stay iterative -- bounded
     // recursion per removal, not one frame per ancestor -- or this
     // overflows the stack.
-    const SPINE: usize = 50_000;
+    //
+    // Miri costs ~40ms per spine node and climbs as live allocations pile
+    // up, so the full size would take upwards of an hour there. Shrink it:
+    // under Miri the point is checking the cascade for UB, not stack depth.
+    const SPINE: usize = if cfg!(miri) { 300 } else { 50_000 };
 
     let root = Node::root(vec![0u32]);
     let mut spine = Vec::with_capacity(SPINE);
@@ -242,9 +246,14 @@ fn long_cascade_stays_shallow() {
 fn randomized_drop_orders_never_double_merge() {
     // Small random trees torn down in random order. Every payload must end
     // up dropped, and none may be folded into two different destinations.
+    //
+    // Reduced under Miri: each round costs seconds there, and the shapes
+    // repeat, so a handful still covers the same code paths.
+    const ROUNDS: usize = if cfg!(miri) { 5 } else { 500 };
+
     let mut rng = rand::rng();
 
-    for _ in 0..500 {
+    for _ in 0..ROUNDS {
         let mut observers = Vec::<Obs>::new();
 
         let (data, obs) = Tracked::pair();
