@@ -10,7 +10,6 @@ license = "MIT OR Apache-2.0"
 forke.path = "./"
 forke-test-utils.path = "./test-utils"
 
-hashbrown = "0.17"
 litemap = "0.8"
 lockbell = { version = "0.2", features = ["arc_lock"] }
 quick-impl = "0.2"
