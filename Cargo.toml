@@ -1,7 +1,7 @@
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.95"
 repository = "https://github.com/makcandrov/forke"
 homepage = "https://github.com/makcandrov/forke"
 license = "MIT OR Apache-2.0"
@@ -11,9 +11,9 @@ forke.path = "./"
 forke-test-utils.path = "./test-utils"
 
 litemap = "0.8"
-lockbell = { version = "0.2", features = ["arc_lock"] }
+lockbell = { version = "0.3", features = ["arc_lock"] }
 quick-impl = "0.2"
-parking_lot = "0.12"
+parking_lot = "0.13"
 rand = "0.10"
 rustc-hash = "2"
 
