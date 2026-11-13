@@ -1,9 +1,8 @@
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.95"
+rust-version = "1.96"
 repository = "https://github.com/makcandrov/forke"
-homepage = "https://github.com/makcandrov/forke"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
@@ -23,7 +22,6 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 repository.workspace = true
-homepage.workspace = true
 license.workspace = true
 description = "A thread-safe tree with automatic node merging."
 keywords = ["tree", "concurrency", "data-structure", "thread-safe", "fork"]
